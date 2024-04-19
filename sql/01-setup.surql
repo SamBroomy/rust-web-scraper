@@ -1,0 +1,1 @@
+DEFINE INDEX unique_links ON TABLE links COLUMNS in, out UNIQUE;
