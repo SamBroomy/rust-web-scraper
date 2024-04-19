@@ -26,6 +26,7 @@ This is just a generic list of the things that I have used within the project, t
   [x] if-let
   [ ] let-else
   [ ] documentation
+  [ ] tests
 
 [x] Sql / NoSql
 
