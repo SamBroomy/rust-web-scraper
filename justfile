@@ -13,3 +13,6 @@ watch:
 
 install:
     curl -sSf https://install.surrealdb.com | sh
+    echo 'export PATH=$HOME/.surrealdb:$PATH' >> ~/.bash_profile
+    source ~/.bash_profile
+    surreal --version

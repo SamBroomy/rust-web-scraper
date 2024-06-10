@@ -9,7 +9,7 @@ pub use wikipedia::WikipediaPage;
 
 #[derive(Clone)]
 pub enum ScrapedPage {
-    //BBCNews(BBCNewsPage),
+    BBCNews(BBCNewsPage),
     //BBCSport(BBCSportPage),
     Wikipedia(WikipediaPage),
 }
@@ -21,6 +21,11 @@ impl ScrapedPage {
                 .get_all_page_links()
                 .into_iter()
                 .map(Url::Wikipedia)
+                .collect(),
+            ScrapedPage::BBCNews(page) => page
+                .get_all_page_links()
+                .into_iter()
+                .map(Url::BBC)
                 .collect(),
         }
     }

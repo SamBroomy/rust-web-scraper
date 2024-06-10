@@ -65,11 +65,12 @@ impl Display for URL {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Article {
-    pub url: URL,
-    title: Cow<'static, str>,
-    content: Cow<'static, str>,
-    related_topics: Vec<Cow<'static, str>>,
+pub struct BBCNewsArticle {
+    title: String,
+
+    content: Vec<String>,
+    related_topics: Vec<String>,
+    timestamp: Vec<String>,
     //images: Vec<Image>,
 }
 

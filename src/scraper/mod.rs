@@ -15,7 +15,7 @@ use surrealdb::Surreal;
 
 use tokio::sync::Mutex as AsyncMutex;
 
-pub use url::{BBCUrl, Url, UrlTrait, WikipediaUrl};
+//pub use url::{BBCUrl, Url, UrlTrait, WikipediaUrl};
 
 use self::pages::WikipediaPage;
 
