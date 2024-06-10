@@ -1,6 +1,6 @@
 use super::error::BBCError;
 use super::BBCUrl;
-use crate::common::{FromScrapedPage, LinkTo, Page, Scraped, UrlTrait};
+use crate::common::{LinkTo, Page, ScrapableContent, Scraped, UrlTrait};
 use crate::Result;
 
 use futures::stream::{self, StreamExt};
@@ -21,8 +21,9 @@ struct Metadata {
     timestamp: String,
     page_links: HashSet<Page<LinkTo, BBCUrl>>,
 }
-impl FromScrapedPage<BBCUrl> for BBCContent {
-    fn from_scraped_page(url: &BBCUrl, document: &Html) -> Result<Self> {
+impl ScrapableContent for BBCContent {
+    type Url = BBCUrl;
+    fn from_scraped_page(url: &Self::Url, document: &Html) -> Result<Self> {
         // TODO Break this function into smaller functions to be able to run async
         println!("Scraping article: {:?}", url);
 

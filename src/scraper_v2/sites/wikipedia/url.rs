@@ -40,8 +40,6 @@ impl Hash for WikipediaUrl {
 }
 
 impl UrlTrait for WikipediaUrl {
-    type ContentType = WikipediaContent;
-
     fn base_url() -> &'static str {
         "https://en.wikipedia.org"
     }

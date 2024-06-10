@@ -40,8 +40,6 @@ impl Hash for BBCUrl {
 }
 
 impl UrlTrait for BBCUrl {
-    type ContentType = BBCContent;
-
     fn base_url() -> &'static str {
         "https://www.bbc.co.uk"
     }

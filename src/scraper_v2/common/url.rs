@@ -1,14 +1,11 @@
-use crate::Result;
+use crate::{Error, Result};
 
-use scraper::Html;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 
 /// This is a trait that is used to represent a url.
 pub trait UrlTrait: Hash + Debug + TryFrom<String> + AsRef<String> {
-    type ContentType: FromScrapedPage<Self>;
-
     /// To create a new Url type from a string. Can also be used on the type itself.
     fn new(url: impl Into<String>) -> std::result::Result<Self, Self::Error>
     where
@@ -45,16 +42,39 @@ pub trait UrlTrait: Hash + Debug + TryFrom<String> + AsRef<String> {
     }
 }
 
-/// This is a trait that is used to convert a scraped page into a type.
-pub trait FromScrapedPage<U: UrlTrait>: Debug {
-    /// This is a helper method that takes a url and a document and returns a Result of the type.
-    fn from_scraped_page(url: &U, document: &Html) -> Result<Self>
-    where
-        Self: Sized;
-}
-
-/// TODO: Get this working <br>
 /// This is a macro that is used to create a new Url type.
+/// # Example
+///
+/// Example of how to use the macro to generate the above boilerplate code
+/// TODO: MACRO TO GENERATE ABOVE BOILERPLATE CODE (./sites/bbc/url.rs)
+/// ```rust
+/// use crate::create_url_type;
+/// use crate::common::ScrapableContent;
+///
+///  // This is a placeholder type that will be used in the macro
+/// #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+/// struct ExampleContent;
+///
+/// // Custom parsing function for ExampleUrl
+/// fn parse_example_url(url: &str) -> Result<String> {
+///     todo!("Example of custom parsing function")
+/// }
+///
+///
+/// create_url_type!(
+///     ExampleURL,
+///     ExampleContent,
+///     "https://www.example.com",
+///     parse_example_url
+/// );
+///
+/// impl ScrapableContent for ExampleContent {
+///     type Url = ExampleURL;
+///     fn from_scraped_page(url: &Self::Url, document: &Html) -> Result<Self> {
+///         todo!("Ensure this function is implemented")
+///     }
+/// }
+
 #[macro_export]
 macro_rules! create_url_type {
     ($type_name:ident, $content_type:ty, $base_url:expr, $parse_function:expr) => {
@@ -91,8 +111,6 @@ macro_rules! create_url_type {
         }
 
         impl UrlTrait for $type_name {
-            type ContentType = $content_type;
-
             fn base_url() -> &'static str {
                 $base_url
             }
@@ -107,37 +125,3 @@ macro_rules! create_url_type {
         }
     };
 }
-
-// Example of how to use the macro to generate the above boilerplate code
-// TODO: MACRO TO GENERATE ABOVE BOILERPLATE CODE (./sites/bbc/url.rs)
-// use crate::common::FromScrapedPage;
-// use crate::create_url_type;
-// use scraper::Html;
-// #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-// struct BBCSportContent; // This is a placeholder type that will be used in the macro
-
-// /// Custom parsing function for BBCSportUrl
-// fn parse_bbc_sport_url(url: &str) -> Result<String> {
-//     todo!("Example of custom parsing function")
-// }
-
-// create_url_type!(
-//     BBCSportURL,
-//     BBCSportContent,
-//     "https://www.bbc.co.uk/",
-//     parse_bbc_sport_url
-// );
-// /* ! WARNING ! For this to work ContentType in the url trait must be:
-// trait UrlTrait {
-//     type ContentType
-//     NOT
-//     type ContentType: FromScrapedPage<Self>;
-//     as the macro will not be able to generate the code for the latter
-// }
-// haven't quite worked out how to make this work with the macro yet as it requires a type that is not yet defined
-// */
-// impl FromScrapedPage<BBCSportURL> for BBCSportContent {
-//     fn from_scraped_page(url: &BBCSportURL, document: &Html) -> Result<Self> {
-//         todo!("Ensure this function is implemented")
-//     }
-// }

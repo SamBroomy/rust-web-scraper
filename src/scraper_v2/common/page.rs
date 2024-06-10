@@ -1,8 +1,11 @@
 use crate::Result;
 
-use super::{make_request, FromScrapedPage, UrlTrait};
+use super::{make_request, UrlTrait};
 
+use scraper::Html;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::fmt::Debug;
 use std::{rc::Rc, sync::Arc};
 
 /// A trait for the state of a page.
@@ -21,8 +24,8 @@ pub struct LinkTo {
 
 /// A struct representing a page that has been scraped. The content field is the scraped content of the page.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
-pub struct Scraped<U: UrlTrait> {
-    content: U::ContentType,
+pub struct Scraped<C: ScrapableContent> {
+    content: C,
 }
 
 macro_rules! impl_page_state_and_as_ref {
@@ -37,11 +40,12 @@ macro_rules! impl_page_state_and_as_ref {
 
 impl_page_state_and_as_ref!(ToScrape, LinkTo);
 
-impl<U: UrlTrait> PageState for Scraped<U> {
+impl<C: ScrapableContent> PageState for Scraped<C> {
     fn audit(&self) -> String {
         format!("Scraped: {:?}", self)
     }
 }
+
 /// A struct representing a page. The state field is the state of the page. The url field is the URL of the page. The url field is an Arc because the URL is shared with the scraper.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub struct Page<S: PageState, U: UrlTrait> {
@@ -94,6 +98,17 @@ impl<U: UrlTrait> Page<LinkTo, U> {
         Self::new(url, title)
     }
 }
+
+/// This is a trait that is used to represent a page state.
+pub trait ScrapableContent: Debug {
+    /// The type of the Url.
+    type Url: UrlTrait;
+    /// This is a helper method that takes a url and a document and returns a Result of the type.
+    fn from_scraped_page(url: &Self::Url, document: &Html) -> Result<Self>
+    where
+        Self: Sized;
+}
+
 /// A trait for types that can be scraped. This means they can be converted into a Scraped type where the content is the scraped content.
 pub trait Scrapable {}
 
@@ -102,10 +117,13 @@ impl Scrapable for LinkTo {}
 
 impl<U: UrlTrait, S: PageState + Scrapable> Page<S, U> {
     /// Scrape the page. This will make a request to the page and scrape the content. The content is then converted into a Scraped type.
-    pub async fn scrape(self) -> Result<Page<Scraped<U>, U>> {
+    pub async fn scrape<C: ScrapableContent<Url = U>>(self) -> Result<Page<Scraped<C>, U>>
+    where
+        C: ScrapableContent<Url = U>,
+    {
         let url = self.url.as_ref();
         let html = make_request(url).await?;
-        let page = U::ContentType::from_scraped_page(&url, &html)?;
+        let page = C::from_scraped_page(&url, &html)?;
 
         Ok(self.transition(Scraped { content: page }))
     }

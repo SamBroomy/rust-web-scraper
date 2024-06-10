@@ -1,6 +1,6 @@
 use super::error::WikipediaError;
 use super::WikipediaUrl;
-use crate::common::{FromScrapedPage, LinkTo, Page, UrlTrait};
+use crate::common::{LinkTo, Page, ScrapableContent, UrlTrait};
 use crate::Result;
 
 use scraper::{ElementRef, Html};
@@ -17,8 +17,9 @@ pub struct WikipediaContent {
     //categories: Vec<Link>,
     page_links: HashSet<WikipediaUrl>,
 }
-impl FromScrapedPage<WikipediaUrl> for WikipediaContent {
-    fn from_scraped_page(url: &WikipediaUrl, html: &Html) -> Result<Self> {
+impl ScrapableContent for WikipediaContent {
+    type Url = WikipediaUrl;
+    fn from_scraped_page(url: &Self::Url, document: &Html) -> Result<Self> {
         // Parse the HTML to create a BBCPage
         todo!()
     }

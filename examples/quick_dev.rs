@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
 
     println!("{:#?}", page1);
 
-    let page1 = page1.scrape().await?;
+    let page1 = page1.scrape::<BBCContent>().await?;
 
     println!("{:#?}", page1);
 
@@ -27,17 +27,17 @@ async fn main() -> Result<()> {
 
     println!("{:#?}", url);
 
-    let page2: Page<Scraped<BBCUrl>, BBCUrl> = Page::new_to_scrape(url).scrape().await?;
+    let page2 = Page::new_to_scrape(url).scrape::<BBCContent>().await?;
 
     println!("{:#?}", page2);
 
-    let url = BBCUrl::new("https://www.bbc.co.uk/news/world-europe-55231203")?;
+    // let url = BBCUrl::new("https://www.bbc.co.uk/news/world-europe-55231203")?;
 
-    println!("{:#?}", url);
+    // println!("{:#?}", url);
 
-    let page3 = Page::new_to_scrape(url).scrape().await?;
+    // let page3 = Page::new_to_scrape(url).scrape().await?;
 
-    println!("{:#?}", page3);
+    // println!("{:#?}", page3);
 
     // let output = make_request(page1.as_ref()).await?;
 
