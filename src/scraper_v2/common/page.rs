@@ -6,6 +6,7 @@ use scraper::Html;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::Debug;
+use std::hash::{Hash, Hasher};
 use std::{rc::Rc, sync::Arc};
 
 /// A trait for the state of a page.
@@ -47,13 +48,21 @@ impl<C: ScrapableContent> PageState for Scraped<C> {
 }
 
 /// A struct representing a page. The state field is the state of the page. The url field is the URL of the page. The url field is an Arc because the URL is shared with the scraper.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Page<S: PageState, U: UrlTrait> {
     url: Arc<U>,
     state: S,
 }
 
+/// Hash implementation for Page. It hashes the URL of the page. The hash of the UrlTrait will be hashed on the url string.
+impl<S: PageState, U: UrlTrait> Hash for Page<S, U> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.url.hash(state);
+    }
+}
+
 impl<S: PageState, U: UrlTrait> AsRef<U> for Page<S, U> {
+    /// Get a reference to the URL of the page.
     fn as_ref(&self) -> &U {
         &*self.url
     }
