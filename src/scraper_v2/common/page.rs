@@ -10,22 +10,24 @@ use std::hash::{Hash, Hasher};
 use std::{rc::Rc, sync::Arc};
 
 /// A trait for the state of a page.
-pub trait PageState {
+pub trait PageState: Debug {
+    // Eq and Hash are required for HashSet
     /// Audit the page state. This is used for debugging. And simply to write the macro impl_page_state_and_as_ref!.
     fn audit(&self) -> String;
 }
 /// A struct representing a page that is yet to be scraped.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ToScrape;
+
 // A struct representing a link to another page. This is used to keep track of the links on a page. A LinkTo page is not scraped yet but can be.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct LinkTo {
     title: String,
 }
 
 /// A struct representing a page that has been scraped. The content field is the scraped content of the page.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
-pub struct Scraped<C: ScrapableContent> {
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct WasScraped<C: ScrapableContent> {
     content: C,
 }
 
@@ -41,17 +43,67 @@ macro_rules! impl_page_state_and_as_ref {
 
 impl_page_state_and_as_ref!(ToScrape, LinkTo);
 
-impl<C: ScrapableContent> PageState for Scraped<C> {
+/// This is a trait that is used to represent a page state.
+pub trait ScrapableContent: Debug {
+    /// The type of the Url.
+    type Url: UrlTrait;
+    /// This is a helper method that takes a url and a document and returns a Result of the type.
+    fn from_scraped_page(url: &Self::Url, document: &Html) -> Result<Self>
+    where
+        Self: Sized;
+}
+
+impl<C: ScrapableContent> PageState for WasScraped<C> {
     fn audit(&self) -> String {
         format!("Scraped: {:?}", self)
     }
 }
 
 /// A struct representing a page. The state field is the state of the page. The url field is the URL of the page. The url field is an Arc because the URL is shared with the scraper.
+///
+/// ## Self Note - ?Sized
+///
+/// ?Sized is used to relax the Sized trait bound. By default, all generic parameters have the Sized trait bound, which means they must have a compile-time known size. The ?Sized bound allows for types that do not have a known size at compile time, such as slices and trait objects.
+///
+/// The reason we need to use ?Sized is because in the Scraper we want a list of Scrapable pages (ToScrape and LinkTo). We can't have a list of Scrapable because Scrapable is a trait and doesn't have a known size at compile time. So we need to use ?Sized to relax the Sized trait bound.
+///
+/// The following code would now not work:
+/// ```rust
+/// let page: Page<dyn PageState, Url> = Page {
+///     url: Arc::new(Url::parse("https://example.com").unwrap()),
+///     state: ToScrape,
+/// };
+/// ```
+/// This is because dyn PageState is a trait object and does not have a known size at compile time. The Page struct requires its state field to be Sized, so this code will not compile.
+///
+/// However, you can still create a Page instance if S is Sized. For example:
+/// ```rust
+///
+/// let page: Page<ToScrape, Url> = Page {
+///     url: Arc::new(Url::parse("https://example.com").unwrap()),
+///     state: ToScrape,
+/// };
+/// ```
+///
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct Page<S: PageState, U: UrlTrait> {
+pub struct Page<S: PageState + ?Sized, U: UrlTrait> {
     url: Arc<U>,
     state: S,
+}
+
+impl<S: PageState, U: UrlTrait> Page<S, U> {
+    /// Transition to a new state.
+    fn transition<N: PageState>(&self, next: N) -> Page<N, U> {
+        Page {
+            url: Arc::clone(&self.url),
+            state: next,
+        }
+    }
+}
+impl<S: PageState + ?Sized, U: UrlTrait> Page<S, U> {
+    pub fn get_url_arc(&self) -> Arc<U> {
+        Arc::clone(&self.url)
+    }
 }
 
 /// Hash implementation for Page. It hashes the URL of the page. The hash of the UrlTrait will be hashed on the url string.
@@ -65,16 +117,6 @@ impl<S: PageState, U: UrlTrait> AsRef<U> for Page<S, U> {
     /// Get a reference to the URL of the page.
     fn as_ref(&self) -> &U {
         &*self.url
-    }
-}
-
-impl<S: PageState, U: UrlTrait> Page<S, U> {
-    /// Transition to a new state.
-    fn transition<N: PageState>(self, next: N) -> Page<N, U> {
-        Page {
-            url: self.url,
-            state: next,
-        }
     }
 }
 
@@ -108,25 +150,16 @@ impl<U: UrlTrait> Page<LinkTo, U> {
     }
 }
 
-/// This is a trait that is used to represent a page state.
-pub trait ScrapableContent: Debug {
-    /// The type of the Url.
-    type Url: UrlTrait;
-    /// This is a helper method that takes a url and a document and returns a Result of the type.
-    fn from_scraped_page(url: &Self::Url, document: &Html) -> Result<Self>
-    where
-        Self: Sized;
-}
-
 /// A trait for types that can be scraped. This means they can be converted into a Scraped type where the content is the scraped content.
-pub trait Scrapable {}
+pub trait Scrapable: PageState {}
 
 impl Scrapable for ToScrape {}
 impl Scrapable for LinkTo {}
 
-impl<U: UrlTrait, S: PageState + Scrapable> Page<S, U> {
+impl<U: UrlTrait, S: Scrapable> Page<S, U> {
     /// Scrape the page. This will make a request to the page and scrape the content. The content is then converted into a Scraped type.
-    pub async fn scrape<C: ScrapableContent<Url = U>>(self) -> Result<Page<Scraped<C>, U>>
+    /// Would prefer if this was consuming self but it's not possible because of the transition method.
+    pub async fn scrape<C: ScrapableContent<Url = U>>(self) -> Result<Page<WasScraped<C>, U>>
     where
         C: ScrapableContent<Url = U>,
     {
@@ -134,6 +167,9 @@ impl<U: UrlTrait, S: PageState + Scrapable> Page<S, U> {
         let html = make_request(url).await?;
         let page = C::from_scraped_page(&url, &html)?;
 
-        Ok(self.transition(Scraped { content: page }))
+        Ok(self.transition(WasScraped { content: page }))
     }
 }
+
+pub trait Scraped: PageState {}
+impl<C: ScrapableContent> Scraped for WasScraped<C> {}

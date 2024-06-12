@@ -1,6 +1,6 @@
 use super::error::BBCError;
 use super::BBCUrl;
-use crate::common::{LinkTo, Page, ScrapableContent, Scraped, UrlTrait};
+use crate::common::{LinkTo, Page, ScrapableContent, UrlTrait};
 use crate::Result;
 
 use futures::stream::{self, StreamExt};

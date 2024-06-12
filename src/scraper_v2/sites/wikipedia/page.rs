@@ -7,7 +7,7 @@ use scraper::{ElementRef, Html};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, rc::Rc};
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct WikipediaContent {
     title: String,
     short_description: String,
