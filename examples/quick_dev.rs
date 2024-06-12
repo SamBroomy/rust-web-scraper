@@ -60,94 +60,96 @@ async fn main() -> Result<()> {
     let url = BBCUrl::new("https://www.bbc.co.uk/news/articles/ceddenl8xz4o")?;
     println!("{:#?}", url);
     let page1: Page<ToScrape, BBCUrl> = Page::new_to_scrape(url);
-    let page1_url: std::sync::Arc<BBCUrl> = page1.get_url_arc();
     let page1: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(page1);
-    let page1_url_1 = page1.as_ref().get_url_arc();
-    // let page1_transition = page1.as_ref().scrape::<BBCContent>().await?;
+    let page1: Box<Page<WasScraped<BBCContent>, BBCUrl>> =
+        page1.scrape_in_place::<BBCContent>().await?;
+    let page1 = *page1;
 
     let url = BBCUrl::new("https://www.bbc.co.uk/news/articles/c8009e2z4xlo")?;
     let page2 = Page::new_link_to(url, "Hello");
-    let page2_url: Arc<BBCUrl> = page2.get_url_arc();
-    let page2: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(page2);
+    let page2 = page2.scrape::<BBCContent>().await?;
+    let page2 = Box::new(page2);
 
-    let page3: Box<Page<dyn Scraped, BBCUrl>> = Box::new(
-        Page::new_to_scrape(BBCUrl::new("https://www.bbc.co.uk/news/articles/")?)
-            .scrape::<BBCContent>()
-            .await?,
+    let page3 = Box::new(
+        Page::new_to_scrape(BBCUrl::new(
+            "https://www.bbc.co.uk/news/articles/cg66g0neweko",
+        )?)
+        .scrape::<BBCContent>()
+        .await?,
     );
+
+    let url = BBCUrl::new("https://www.bbc.co.uk/news/articles/c0661dnmzezo")?;
+    let page4: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(Page::new_to_scrape(url));
+    let page5: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(Page::new_link_to(
+        BBCUrl::new("https://www.bbc.co.uk/news/articles/c6ppd6p12k4o")?,
+        "Greens vow tax hike on wealthier to fund NHS and housing",
+    ));
+    let page6: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(Page::new_to_scrape(BBCUrl::new(
+        "https://www.bbc.co.uk/news/articles/c9rrwe0ne7ro",
+    )?));
+
+    //Same as page 4
+    let page4_2: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(Page::new_to_scrape(BBCUrl::new(
+        "https://www.bbc.co.uk/news/articles/c0661dnmzezo",
+    )?));
+    let page5_2: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(Page::new_link_to(
+        BBCUrl::new("https://www.bbc.co.uk/news/articles/c6ppd6p12k4o")?,
+        "Greens vow tax hike on wealthier to fund NHS and housing",
+    ));
+
     let mut visited: HashSet<Arc<BBCUrl>> = HashSet::new();
 
-    visited.insert(page1_url);
-    visited.insert(page2_url);
+    visited.insert(page1.get_url_arc());
+    visited.insert(page2.get_url_arc());
+    visited.insert(page3.get_url_arc());
+    visited.insert(page4.get_url_arc());
+    println!("Visited: {:#?}", visited);
 
-    // let mut pages = VecDeque::new();
     let mut pages: VecDeque<Box<Page<dyn Scrapable, BBCUrl>>> = VecDeque::new();
 
-    pages.push_back(page1);
-    pages.push_back(page2);
+    pages.push_back(page4);
+    pages.push_back(page5);
+    pages.push_back(page6);
+    pages.push_back(page4_2);
+    pages.push_back(page5_2);
 
-    let page1 = Rc::new(BBCUrl::new(
-        "https://www.bbc.co.uk/news/articles/ceddenl8xz4o",
-    )?);
-    let page2 = Rc::new(BBCUrl::new(
-        "https://www.bbc.co.uk/news/articles/c8009e2z4xlo",
-    )?);
-
-    visited.insert(Rc::clone(&page1));
-    visited.insert(Rc::clone(&page1));
-    visited.insert(page2);
-
-    let a = 124 as i32;
-
-    let b = 1235 as i32;
-
-    //visited.insert(page2);
-
-    println!("{:#?}", visited);
-    // pages.push_back(Page::new_to_scrape(page1).as_ref());
-    // pages.push_back(Page::new_link_to(page2, "Title").as_ref());
-
-    // ph.visited.insert(page1);
+    println!("Pages: {:#?}", pages);
 
     let current_depth = 1;
-
     println!(
         " ------------------------------------- ITERATION {} -------------------------------------",
         current_depth
     );
 
-    println!("Pages: {:#?}", pages);
+    let pages_to_scrape = pages
+        .drain(..)
+        .collect::<Vec<Box<Page<dyn Scrapable, BBCUrl>>>>();
 
-    // let mut pages_to_scrape = pages
-    //     .drain(..)
-    //     .collect::<HashSet<Box<Page<dyn Scrapable, BBCUrl>>>>();
+    println!("Pages to scrape: {:#?}", pages_to_scrape);
 
-    // println!("Pages to scrape: {:#?}", pages_to_scrape);
-    // pages_to_scrape.retain(|page| {
-    //     let url: BBCUrl = page.as_ref();
-    //     !visited.contains(url)
-    // });
+    let mut seen = HashSet::new();
 
-    // pages_to_scrape
-    //     .into_iter()
-    //     .for_each(|page: Box<Page<dyn Scrapable, BBCUrl>>| {
-    //         let url: BBCUrl = page.as_ref();
+    let mut unique_pages_to_scrape = pages_to_scrape
+        .into_iter()
+        .filter(|page| seen.insert(page.get_url_arc()))
+        .collect::<Vec<Box<Page<dyn Scrapable, BBCUrl>>>>();
 
-    //         visited.into_iter().for_each(|visited_url: Rc<BBCUrl>| {
-    //             if visited_url == url {
-    //                 println!("Page: {:#?}", page);
-    //             }
-    //         });
-    //     });
-    // pages_to_scrape.retain(|url| !self.visited.contains(url.as_ref()));
+    println!("Unique Pages: {:#?}", unique_pages_to_scrape);
 
-    // println!(
-    //     "Pages to scrape this iteration: {:?}",
-    //     pages_to_scrape.len()
-    // );
-    // let scraped_pages = self
-    //     .scrape_pages(pages_to_scrape.into_iter().collect())
-    //     .await;
+    unique_pages_to_scrape.retain(|page| {
+        let url = page.get_url_arc();
+        !visited.contains(&url)
+    });
+    println!(
+        "Pages to scrape after retain: {:#?}",
+        unique_pages_to_scrape
+    );
+
+    println!(
+        "Pages to scrape this iteration: {:?}",
+        unique_pages_to_scrape.len()
+    );
+
 
     // self.pages.extend(
     //     scraped_pages

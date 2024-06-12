@@ -16,19 +16,20 @@ pub trait PageState: Debug {
     fn audit(&self) -> String;
 }
 /// A struct representing a page that is yet to be scraped.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub struct ToScrape;
 
 // A struct representing a link to another page. This is used to keep track of the links on a page. A LinkTo page is not scraped yet but can be.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub struct LinkTo {
     title: String,
 }
 
 /// A struct representing a page that has been scraped. The content field is the scraped content of the page.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub struct WasScraped<C: ScrapableContent> {
     content: C,
+    link_title: Option<String>,
 }
 
 macro_rules! impl_page_state_and_as_ref {
@@ -44,7 +45,7 @@ macro_rules! impl_page_state_and_as_ref {
 impl_page_state_and_as_ref!(ToScrape, LinkTo);
 
 /// This is a trait that is used to represent a page state.
-pub trait ScrapableContent: Debug {
+pub trait ScrapableContent: Debug + Eq {
     /// The type of the Url.
     type Url: UrlTrait;
     /// This is a helper method that takes a url and a document and returns a Result of the type.
@@ -93,7 +94,7 @@ pub struct Page<S: PageState + ?Sized, U: UrlTrait> {
 
 impl<S: PageState, U: UrlTrait> Page<S, U> {
     /// Transition to a new state.
-    fn transition<N: PageState>(&self, next: N) -> Page<N, U> {
+    fn transition<N: PageState>(self, next: N) -> Page<N, U> {
         Page {
             url: Arc::clone(&self.url),
             state: next,
@@ -103,6 +104,13 @@ impl<S: PageState, U: UrlTrait> Page<S, U> {
 impl<S: PageState + ?Sized, U: UrlTrait> Page<S, U> {
     pub fn get_url_arc(&self) -> Arc<U> {
         Arc::clone(&self.url)
+    }
+    /// Transition to a new state while keeping the page in place or in a box.
+    fn transition_in_place<N: PageState>(self: Box<Self>, next: N) -> Box<Page<N, U>> {
+        Box::new(Page {
+            url: Arc::clone(&self.url),
+            state: next,
+        })
     }
 }
 
@@ -151,23 +159,55 @@ impl<U: UrlTrait> Page<LinkTo, U> {
 }
 
 /// A trait for types that can be scraped. This means they can be converted into a Scraped type where the content is the scraped content.
-pub trait Scrapable: PageState {}
+pub trait Scrapable: PageState {
+    fn get_title(&self) -> Option<String> {
+        None
+    }
+}
 
 impl Scrapable for ToScrape {}
-impl Scrapable for LinkTo {}
+impl Scrapable for LinkTo {
+    fn get_title(&self) -> Option<String> {
+        Some(self.title.clone())
+    }
+}
 
 impl<U: UrlTrait, S: Scrapable> Page<S, U> {
     /// Scrape the page. This will make a request to the page and scrape the content. The content is then converted into a Scraped type.
-    /// Would prefer if this was consuming self but it's not possible because of the transition method.
     pub async fn scrape<C: ScrapableContent<Url = U>>(self) -> Result<Page<WasScraped<C>, U>>
     where
         C: ScrapableContent<Url = U>,
     {
+        let title = self.state.get_title();
         let url = self.url.as_ref();
         let html = make_request(url).await?;
         let page = C::from_scraped_page(&url, &html)?;
 
-        Ok(self.transition(WasScraped { content: page }))
+        Ok(self.transition(WasScraped {
+            content: page,
+            link_title: title,
+        }))
+    }
+}
+
+impl<U: UrlTrait, S: Scrapable + ?Sized> Page<S, U> {
+    /// Scrape the page. This will make a request to the page and scrape the content. The content is then converted into a Scraped type.
+    /// Would prefer if this was consuming self but it's not possible because of the transition method.
+    pub async fn scrape_in_place<C: ScrapableContent<Url = U>>(
+        self: Box<Self>,
+    ) -> Result<Box<Page<WasScraped<C>, U>>>
+    where
+        C: ScrapableContent<Url = U>,
+    {
+        let title = self.state.get_title();
+        let url = self.url.as_ref();
+        let html = make_request(url).await?;
+        let page = C::from_scraped_page(&url, &html)?;
+
+        Ok(self.transition_in_place(WasScraped {
+            content: page,
+            link_title: title,
+        }))
     }
 }
 
