@@ -65,6 +65,11 @@ impl ScrapableContent for BBCContent {
             page_links,
         ))
     }
+
+    fn get_related_pages(&self) -> HashSet<Page<LinkTo, Self::Url>> {
+        self.metadata.page_links.clone()
+
+    }
 }
 
 impl BBCContent {

@@ -1,5 +1,6 @@
 use core::hash;
 use std::collections::{HashSet, VecDeque};
+use std::mem;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -10,15 +11,19 @@ use my_crate::scraper_v2::common::{
 use my_crate::scraper_v2::sites::bbc::{BBCContent, BBCUrl};
 use my_crate::scraper_v2::Result;
 
+use futures::stream::futures_unordered::IntoIter;
+use futures::stream::{self, StreamExt};
 use surrealdb::engine::remote::ws::{Client, Ws};
 use surrealdb::opt::auth::Root;
 use surrealdb::Surreal;
+use tokio::sync::Mutex;
+//use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     //let db = get_db("scraping").await?;
 
-    let url = BBCUrl::new("https://www.bbc.co.uk/news/articles/ceddenl8xz4o")?;
+    let url = BBCUrl::parse("https://www.bbc.co.uk/news/articles/ceddenl8xz4o")?;
     println!("{:#?}", url);
     let page1 = Page::new_to_scrape(url);
     println!("{:#?}", page1);
@@ -57,43 +62,41 @@ async fn main() -> Result<()> {
 
     // let mut ph = PageHandler::<BBCUrl>::new();
 
-    let url = BBCUrl::new("https://www.bbc.co.uk/news/articles/ceddenl8xz4o")?;
+    let url = BBCUrl::parse("https://www.bbc.co.uk/news/articles/ceddenl8xz4o")?;
     println!("{:#?}", url);
     let page1: Page<ToScrape, BBCUrl> = Page::new_to_scrape(url);
     let page1: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(page1);
-    let page1: Box<Page<WasScraped<BBCContent>, BBCUrl>> =
-        page1.scrape_in_place::<BBCContent>().await?;
-    let page1 = *page1;
+    let page1: Page<WasScraped<BBCContent>, BBCUrl> = page1.scrape_in_place::<BBCContent>().await?;
 
-    let url = BBCUrl::new("https://www.bbc.co.uk/news/articles/c8009e2z4xlo")?;
+    let url = BBCUrl::parse("https://www.bbc.co.uk/news/articles/c8009e2z4xlo")?;
     let page2 = Page::new_link_to(url, "Hello");
     let page2 = page2.scrape::<BBCContent>().await?;
     let page2 = Box::new(page2);
 
     let page3 = Box::new(
-        Page::new_to_scrape(BBCUrl::new(
+        Page::new_to_scrape(BBCUrl::parse(
             "https://www.bbc.co.uk/news/articles/cg66g0neweko",
         )?)
         .scrape::<BBCContent>()
         .await?,
     );
 
-    let url = BBCUrl::new("https://www.bbc.co.uk/news/articles/c0661dnmzezo")?;
+    let url = BBCUrl::parse("https://www.bbc.co.uk/news/articles/c0661dnmzezo")?;
     let page4: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(Page::new_to_scrape(url));
     let page5: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(Page::new_link_to(
-        BBCUrl::new("https://www.bbc.co.uk/news/articles/c6ppd6p12k4o")?,
+        BBCUrl::parse("https://www.bbc.co.uk/news/articles/c6ppd6p12k4o")?,
         "Greens vow tax hike on wealthier to fund NHS and housing",
     ));
-    let page6: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(Page::new_to_scrape(BBCUrl::new(
+    let page6: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(Page::new_to_scrape(BBCUrl::parse(
         "https://www.bbc.co.uk/news/articles/c9rrwe0ne7ro",
     )?));
 
     //Same as page 4
-    let page4_2: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(Page::new_to_scrape(BBCUrl::new(
+    let page4_2: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(Page::new_to_scrape(BBCUrl::parse(
         "https://www.bbc.co.uk/news/articles/c0661dnmzezo",
     )?));
     let page5_2: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(Page::new_link_to(
-        BBCUrl::new("https://www.bbc.co.uk/news/articles/c6ppd6p12k4o")?,
+        BBCUrl::parse("https://www.bbc.co.uk/news/articles/c6ppd6p12k4o")?,
         "Greens vow tax hike on wealthier to fund NHS and housing",
     ));
 
@@ -102,7 +105,7 @@ async fn main() -> Result<()> {
     visited.insert(page1.get_url_arc());
     visited.insert(page2.get_url_arc());
     visited.insert(page3.get_url_arc());
-    visited.insert(page4.get_url_arc());
+    //visited.insert(page4.get_url_arc());
     println!("Visited: {:#?}", visited);
 
     let mut pages: VecDeque<Box<Page<dyn Scrapable, BBCUrl>>> = VecDeque::new();
@@ -110,8 +113,8 @@ async fn main() -> Result<()> {
     pages.push_back(page4);
     pages.push_back(page5);
     pages.push_back(page6);
-    pages.push_back(page4_2);
-    pages.push_back(page5_2);
+    //pages.push_back(page4_2);
+    //pages.push_back(page5_2);
 
     println!("Pages: {:#?}", pages);
 
@@ -150,40 +153,57 @@ async fn main() -> Result<()> {
         unique_pages_to_scrape.len()
     );
 
+    //? The Arc type is a reference-counted pointer that allows you to share ownership of a value across multiple threads. It is used to create a reference to the data that can be moved into the concurrent task.
+    let visited_mutex = Arc::new(Mutex::new(visited));
+    let pages_mutex = Arc::new(Mutex::new(pages));
 
-    // self.pages.extend(
-    //     scraped_pages
-    //         .iter()
-    //         .map(|page| page.get_urls())
-    //         .flatten()
-    //         .filter(|url| !self.visited.contains(url)),
-    // );
+    stream::iter(unique_pages_to_scrape.into_iter())
+        .for_each_concurrent(None, |scrapable_page| {
+            //? Each of the tasks need to have access to scraped_pages, but cant directly pass scraped_pages to them because it would mean multiple owners. What we are doing here is creating a new reference (Arc) to the data (.clone()). This new arc can then be moved into the concurrent task, giving it access to the shared data.
+            let visited_mutex = visited_mutex.clone();
+            let pages_mutex = pages_mutex.clone();
 
-    ////////////////////////////////////////////////////////////////////////////////////////
+            //? here the async means creating an async block of code that can be awaited.
+            //? The move means the closure takes ownership of the values it uses inside the closure (url, scraped_pages).
+            async move {
+                {
+                    let mut visited_urls = visited_mutex.lock().await;
+                    if visited_urls.contains(&scrapable_page.get_url_arc()) {
+                        return;
+                    }
+                }
 
-    // let url = BBCUrl::new("https://www.bbc.co.uk/news/world-europe-55231203")?;
+                if let Some(page) = scrapable_page.scrape_in_place::<BBCContent>().await.ok() {
+                    let linked_pages = page
+                        .get_all_page_links()
+                        .into_iter()
+                        .map(|page| Box::new(page) as Box<Page<dyn Scrapable, BBCUrl>>)
+                        .collect::<Vec<Box<Page<dyn Scrapable, BBCUrl>>>>();
 
-    // println!("{:#?}", url);
+                    //? Lock and modify pages_to_scrape, then immediately drop the lock
+                    {
+                        let mut locked_pages_to_scrape = pages_mutex.lock().await;
+                        locked_pages_to_scrape.extend(linked_pages);
+                    } //? locked_pages_to_scrape is dropped here, releasing the lock
+                      //? Didn't need to do the same thing here as the guard is dropped at the end of the block
+                    let mut visited_urls = visited_mutex.lock().await;
+                    visited_urls.insert(page.get_url_arc());
+                    // TODO: Insert data to db here?
+                }
+            }
+        })
+        .await;
+    let mut visited = visited_mutex.lock().await.clone();
+    // let mut guard = visited_mutex.lock().await;
+    // let mut visited = mem::replace(&mut *guard, HashSet::new());
+    println!("Pages visited: {:#?}", visited);
 
-    // let page3 = Page::new_to_scrape(url).scrape().await?;
+    let mut guard = pages_mutex.lock().await;
+    let mut pages = mem::replace(&mut *guard, VecDeque::new());
 
-    // println!("{:#?}", page3);
+    println!("Pages left to scrape: {:#?}", pages);
 
-    // let output = make_request(page1.as_ref()).await?;
-
-    // println!("{:#?}", output);
-
-    // let a = url.as_ref();
-
-    // let url =
-    //     WikipediaUrl::new("https://en.wikipedia.org/wiki/Rust_(programming_language)").unwrap();
-    // let page = WikipediaPage::get_page_with_content(&url).await?;
-
-    // let mut my_scraper = Scraper::new(&db);
-
-    // my_scraper.add_links(&url.into());
-
-    // my_scraper.get_pages_recursive(2).await;
+    // Box::pin(self.get_pages_recursive_internal(max_depth, current_depth + 1)).await;
 
     println!("Finished!");
 

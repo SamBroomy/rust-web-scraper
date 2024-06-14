@@ -16,13 +16,13 @@ workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-reqwest = {version ="0.12", features = ["blocking"]}
+reqwest = { version = "0.12", features = ["blocking"] }
 scraper = "0.19"
 tokio = { version = "1", features = ["full", "macros", "rt-multi-thread"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-derive_more = {version="0.99", features = ["from"]}
-surrealdb ="1.4"
+derive_more = { version = "0.99", features = ["from"] }
+surrealdb = "1.4"
 anyhow = "1"
 futures = "0.3"
 lazy_static = "1.4"

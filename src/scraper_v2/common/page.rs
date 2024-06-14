@@ -52,6 +52,8 @@ pub trait ScrapableContent: Debug + Eq {
     fn from_scraped_page(url: &Self::Url, document: &Html) -> Result<Self>
     where
         Self: Sized;
+
+    fn get_related_pages(&self) -> HashSet<Page<LinkTo, Self::Url>>;
 }
 
 impl<C: ScrapableContent> PageState for WasScraped<C> {
@@ -195,7 +197,7 @@ impl<U: UrlTrait, S: Scrapable + ?Sized> Page<S, U> {
     /// Would prefer if this was consuming self but it's not possible because of the transition method.
     pub async fn scrape_in_place<C: ScrapableContent<Url = U>>(
         self: Box<Self>,
-    ) -> Result<Box<Page<WasScraped<C>, U>>>
+    ) -> Result<Page<WasScraped<C>, U>>
     where
         C: ScrapableContent<Url = U>,
     {
@@ -203,8 +205,8 @@ impl<U: UrlTrait, S: Scrapable + ?Sized> Page<S, U> {
         let url = self.url.as_ref();
         let html = make_request(url).await?;
         let page = C::from_scraped_page(&url, &html)?;
-
-        Ok(self.transition_in_place(WasScraped {
+        // Because we are going from a unsized type to a sized type, we can take the data out of the box and put it back on the stack.
+        Ok(*self.transition_in_place(WasScraped {
             content: page,
             link_title: title,
         }))
@@ -213,3 +215,13 @@ impl<U: UrlTrait, S: Scrapable + ?Sized> Page<S, U> {
 
 pub trait Scraped: PageState {}
 impl<C: ScrapableContent> Scraped for WasScraped<C> {}
+
+impl<U, C> Page<WasScraped<C>, U>
+where
+    U: UrlTrait,
+    C: ScrapableContent<Url = U>,
+{
+    pub fn get_all_page_links(&self) -> HashSet<Page<LinkTo, U>> {
+        self.state.content.get_related_pages()
+    }
+}

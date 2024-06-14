@@ -23,4 +23,8 @@ impl ScrapableContent for WikipediaContent {
         // Parse the HTML to create a BBCPage
         todo!()
     }
+
+    fn get_related_pages(&self) -> HashSet<Page<LinkTo, Self::Url>> {
+        todo!()
+    }
 }
