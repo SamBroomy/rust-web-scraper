@@ -10,7 +10,7 @@ use std::hash::{Hash, Hasher};
 use std::{rc::Rc, sync::Arc};
 
 /// A trait for the state of a page.
-pub trait PageState: Debug {
+pub trait PageState: Debug + Send {
     // Eq and Hash are required for HashSet
     /// Audit the page state. This is used for debugging. And simply to write the macro impl_page_state_and_as_ref!.
     fn audit(&self) -> String;
@@ -45,7 +45,7 @@ macro_rules! impl_page_state_and_as_ref {
 impl_page_state_and_as_ref!(ToScrape, LinkTo);
 
 /// This is a trait that is used to represent a page state.
-pub trait ScrapableContent: Debug + Eq {
+pub trait ScrapableContent: Debug + Eq + Send {
     /// The type of the Url.
     type Url: UrlTrait;
     /// This is a helper method that takes a url and a document and returns a Result of the type.

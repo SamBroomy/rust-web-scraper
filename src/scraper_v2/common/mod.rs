@@ -8,3 +8,5 @@ pub use page::{
     LinkTo, Page, PageState, Scrapable, ScrapableContent, Scraped, ToScrape, WasScraped,
 };
 pub use url::UrlTrait;
+
+pub use scraper::{PageHandler, PageScraper};
