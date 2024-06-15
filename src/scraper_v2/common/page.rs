@@ -1,6 +1,6 @@
 use crate::Result;
 
-use super::{make_request, UrlTrait};
+use super::{make_request, ScrapableContent, UrlTrait};
 
 use scraper::Html;
 use serde::{Deserialize, Serialize};
@@ -44,18 +44,6 @@ macro_rules! impl_page_state_and_as_ref {
 }
 
 impl_page_state_and_as_ref!(ToScrape, LinkTo);
-
-/// This is a trait that is used to represent a page state.
-pub trait ScrapableContent: Debug + Eq + Send {
-    /// The type of the Url.
-    type Url: UrlTrait;
-    /// This is a helper method that takes a url and a document and returns a Result of the type.
-    fn from_scraped_page(url: &Self::Url, document: &Html) -> Result<Self>
-    where
-        Self: Sized;
-
-    fn get_related_pages(&self) -> HashSet<Page<LinkTo, Self::Url>>;
-}
 
 impl<C: ScrapableContent> PageState for WasScraped<C> {
     fn audit(&self) -> String {
