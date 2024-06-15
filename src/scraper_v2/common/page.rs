@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use std::{rc::Rc, sync::Arc};
+use tracing::{info, instrument};
 
 /// A trait for the state of a page.
 pub trait PageState: Debug + Send {
@@ -180,8 +181,13 @@ impl<U: UrlTrait, S: Scrapable> Page<S, U> {
     where
         C: ScrapableContent<Url = U>,
     {
-        let title = self.state.get_title();
+        let title: Option<String> = self.state.get_title();
         let url = self.url.as_ref();
+        info!(
+            "Scraping: {} - {}",
+            url.to_string(),
+            title.as_ref().unwrap_or(&"[No title]".to_string())
+        );
         let html = make_request(url).await?;
         let page = C::from_scraped_page(&url, &html)?;
 
@@ -191,10 +197,10 @@ impl<U: UrlTrait, S: Scrapable> Page<S, U> {
         }))
     }
 }
-
 impl<U: UrlTrait, S: Scrapable + ?Sized> Page<S, U> {
     /// Scrape the page. This will make a request to the page and scrape the content. The content is then converted into a Scraped type.
     /// Would prefer if this was consuming self but it's not possible because of the transition method.
+    #[instrument]
     pub async fn scrape_in_place<C: ScrapableContent<Url = U>>(
         self: Box<Self>,
     ) -> Result<Page<WasScraped<C>, U>>
@@ -203,6 +209,11 @@ impl<U: UrlTrait, S: Scrapable + ?Sized> Page<S, U> {
     {
         let title = self.state.get_title();
         let url = self.url.as_ref();
+        info!(
+            "Scraping: {} - {}",
+            url.to_string(),
+            title.as_ref().unwrap_or(&"[No title]".to_string())
+        );
         let html = make_request(url).await?;
         let page = C::from_scraped_page(&url, &html)?;
         // Because we are going from a unsized type to a sized type, we can take the data out of the box and put it back on the stack.
