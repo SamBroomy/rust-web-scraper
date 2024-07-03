@@ -27,4 +27,8 @@ impl ScrapableContent for WikipediaContent {
     fn get_related_pages(&self) -> HashSet<Page<LinkTo, Self::Url>> {
         todo!()
     }
+
+    fn get_title(&self) -> String {
+        todo!()
+    }
 }

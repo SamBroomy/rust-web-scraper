@@ -1,13 +1,13 @@
 use core::hash;
 use std::collections::{HashSet, VecDeque};
-use std::mem;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::{clone, mem};
 
 use my_crate::get_db::get_db;
 use my_crate::scraper_v2::common::{
-    make_request, LinkTo, Page, PageHandler, PageScraper, PageState, Scrapable, Scraped, ToScrape,
-    UrlTrait, WasScraped,
+    make_request, LinkTo, MockDB, Page, PageHandler, PageState, Scrapable, Scraped, Scraper,
+    ToScrape, UrlTrait, WasScraped,
 };
 use my_crate::scraper_v2::sites::bbc::{BBCContent, BBCUrl};
 use my_crate::scraper_v2::Result;
@@ -68,14 +68,26 @@ async fn main() -> Result<()> {
         BBCUrl::parse("https://www.bbc.co.uk/news/articles/c6ppd6p12k4o")?,
         "Greens vow tax hike on wealthier to fund NHS and housing",
     ));
+    // let db = MockDB::<BBCContent>::default();
+    // let db = Arc::new(Mutex::new(db));
 
-    let mut ph = PageHandler::<BBCUrl>::new();
-    ph.add_pages(vec![page4, page5, page6, page4_2, page5_2])
+    // let mut ph = PageHandler::<BBCUrl>::new();
+    // ph.add_pages(vec![page4, page5, page6, page4_2, page5_2])
+    //     .await;
+
+    // let mut  ph2 = ph.clone();
+
+    // ph.scrape_pages_recursive(db.clone(), 3).await;
+
+    let mut scraper = Scraper::<BBCUrl, BBCContent>::default();
+
+    scraper
+        .add_pages(vec![page4, page5, page6, page4_2, page5_2])
         .await;
 
-    ph.scrape_pages_recursive::<BBCContent>(3).await;
+    scraper.scrape_pages_recursive(3).await;
 
-    println!("Page Handler: {:#?}", ph);
+    println!("Scraper: {:#?}", scraper);
 
     println!("Finished!");
 

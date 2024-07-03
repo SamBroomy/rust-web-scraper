@@ -67,7 +67,7 @@ impl UrlTrait for BBCUrl {
             .into());
         };
 
-        let segments: Vec<&str> = stripped_url.split("/").collect();
+        let segments: Vec<&str> = stripped_url.split('/').collect();
         let ends_with_number = segments.last().map_or(false, |last_segment| {
             last_segment.split('-').last().map_or(false, |last_word| {
                 last_word.len() == 8 && last_word.parse::<u32>().is_ok()

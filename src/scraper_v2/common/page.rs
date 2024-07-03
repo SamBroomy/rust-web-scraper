@@ -1,17 +1,20 @@
 use crate::Result;
 
-use super::{make_request, ScrapableContent, UrlTrait};
+use crate::common::{make_request, ScrapableContent, UrlTrait, DB};
 
+use futures::stream::futures_unordered::IntoIter;
+use futures::stream::{self, StreamExt};
 use scraper::Html;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use std::{rc::Rc, sync::Arc};
+use tokio::sync::Mutex;
 use tracing::{info, instrument};
 
 /// A trait for the state of a page.
-pub trait PageState: Debug + Send {
+pub trait PageState: Debug + Send + Sync {
     // Eq and Hash are required for HashSet
     /// Audit the page state. This is used for debugging. And simply to write the macro impl_page_state_and_as_ref!.
     fn audit(&self) -> String;
@@ -115,7 +118,7 @@ impl<S: PageState, U: UrlTrait> Hash for Page<S, U> {
 impl<S: PageState, U: UrlTrait> AsRef<U> for Page<S, U> {
     /// Get a reference to the URL of the page.
     fn as_ref(&self) -> &U {
-        &*self.url
+        &self.url
     }
 }
 
@@ -165,7 +168,7 @@ impl Scrapable for LinkTo {
 
 impl<U: UrlTrait, S: Scrapable> Page<S, U> {
     /// Scrape the page. This will make a request to the page and scrape the content. The content is then converted into a Scraped type.
-    pub async fn scrape<C: ScrapableContent<Url = U>>(self) -> Result<Page<WasScraped<C>, U>>
+    pub async fn scrape<C>(self) -> Result<Page<WasScraped<C>, U>>
     where
         C: ScrapableContent<Url = U>,
     {
@@ -177,7 +180,7 @@ impl<U: UrlTrait, S: Scrapable> Page<S, U> {
             title.as_ref().unwrap_or(&"[No title]".to_string())
         );
         let html = make_request(url).await?;
-        let page = C::from_scraped_page(&url, &html)?;
+        let page = C::from_scraped_page(url, &html)?;
 
         Ok(self.transition(WasScraped {
             content: page,
@@ -189,9 +192,7 @@ impl<U: UrlTrait, S: Scrapable + ?Sized> Page<S, U> {
     /// Scrape the page. This will make a request to the page and scrape the content. The content is then converted into a Scraped type.
     /// Would prefer if this was consuming self but it's not possible because of the transition method.
     #[instrument]
-    pub async fn scrape_in_place<C: ScrapableContent<Url = U>>(
-        self: Box<Self>,
-    ) -> Result<Page<WasScraped<C>, U>>
+    pub async fn scrape_in_place<C>(self: Box<Self>) -> Result<Page<WasScraped<C>, U>>
     where
         C: ScrapableContent<Url = U>,
     {
@@ -203,7 +204,7 @@ impl<U: UrlTrait, S: Scrapable + ?Sized> Page<S, U> {
             title.as_ref().unwrap_or(&"[No title]".to_string())
         );
         let html = make_request(url).await?;
-        let page = C::from_scraped_page(&url, &html)?;
+        let page = C::from_scraped_page(url, &html)?;
         // Because we are going from a unsized type to a sized type, we can take the data out of the box and put it back on the stack.
         Ok(*self.transition_in_place(WasScraped {
             content: page,
@@ -222,5 +223,172 @@ where
 {
     pub fn get_all_page_links(&self) -> HashSet<Page<LinkTo, U>> {
         self.state.content.get_related_pages()
+    }
+
+    pub fn get_content(&self) -> &C {
+        &self.state.content
+    }
+
+    pub fn get_title(&self) -> Option<String> {
+        self.state.link_title.clone()
+    }
+}
+
+pub type ScrapablePagesQueue<U> = Arc<Mutex<VecDeque<Box<Page<dyn Scrapable, U>>>>>;
+
+#[derive(Debug, Clone)]
+pub struct PageHandler<U: UrlTrait> {
+    visited: Arc<Mutex<HashSet<Arc<U>>>>,
+    pages_queue: ScrapablePagesQueue<U>,
+}
+
+impl<U: UrlTrait> Default for PageHandler<U>
+where
+    U: UrlTrait + Eq,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<U: UrlTrait> PageHandler<U>
+where
+    U: UrlTrait + Eq,
+{
+    pub fn new() -> Self {
+        Self {
+            visited: Arc::new(Mutex::new(HashSet::new())),
+            pages_queue: Arc::new(Mutex::new(VecDeque::new())),
+        }
+    }
+
+    pub async fn add_page(&mut self, page: Box<Page<dyn Scrapable, U>>) {
+        let mut pages_queue = self.pages_queue.lock().await;
+        pages_queue.push_back(page);
+    }
+
+    pub async fn add_pages<I>(&mut self, pages: I)
+    where
+        I: IntoIterator<Item = Box<Page<dyn Scrapable, U>>> + Send,
+    {
+        let mut pages_list = self.pages_queue.lock().await;
+        pages_list.extend(pages);
+    }
+
+    pub async fn scrape_pages_recursive<C: ScrapableContent<Url = U>>(
+        &mut self,
+        db: DB<C>,
+        mut max_depth: u32,
+    ) {
+        if max_depth > 10 {
+            println!("Max depth is too high, setting to 10!");
+            max_depth = 10;
+        }
+        let max_depth = max_depth;
+
+        self.get_pages_recursive_internal::<C>(db, max_depth, 0)
+            .await;
+    }
+
+    /// Drain all pages from the queue.
+    //? Trying to keep the scope of the lock as small as possible.
+    async fn drain_pages(&mut self) -> Vec<Box<Page<dyn Scrapable, U>>> {
+        let mut pages_queue = self.pages_queue.lock().await;
+        pages_queue.drain(..).collect()
+    }
+
+    fn get_unique_pages_to_scrape(
+        &self,
+        pages_to_scrape: Vec<Box<Page<dyn Scrapable, U>>>,
+    ) -> Vec<Box<Page<dyn Scrapable, U>>> {
+        let mut seen = HashSet::new();
+
+        pages_to_scrape
+            .into_iter()
+            .filter(|page| seen.insert(page.get_url_arc()))
+            .collect::<Vec<Box<Page<dyn Scrapable, U>>>>()
+    }
+
+    /// Remove pages that have already been visited from the list of pages to scrape.
+    ///? Again, trying to keep the scope of the lock as small as possible.
+    async fn remove_visited_pages(&self, pages_to_scrape: &mut Vec<Box<Page<dyn Scrapable, U>>>) {
+        let visited = self.visited.lock().await;
+        pages_to_scrape.retain(|page| !visited.contains(&page.get_url_arc()));
+    }
+
+    async fn get_pages_recursive_internal<C: ScrapableContent<Url = U>>(
+        &mut self,
+        db: DB<C>,
+        max_depth: u32,
+        current_depth: u32,
+    ) {
+        if current_depth > max_depth {
+            return;
+        }
+
+        println!(
+            " ------------------------------------- ITERATION {} -------------------------------------",
+            current_depth);
+
+        let mut pages_to_scrape = self.drain_pages().await;
+
+        println!("Pages to scrape: {:#?}", pages_to_scrape);
+
+        let mut unique_pages_to_scrape = self.get_unique_pages_to_scrape(pages_to_scrape);
+
+        println!("Unique Pages: {:#?}", unique_pages_to_scrape);
+
+        self.remove_visited_pages(&mut unique_pages_to_scrape).await;
+
+        println!(
+            "Pages to scrape after removing visited pages: {:#?}",
+            unique_pages_to_scrape
+        );
+
+        stream::iter(unique_pages_to_scrape.into_iter())
+            .for_each_concurrent(None, |scrapable_page| {
+                //? Each of the tasks need to have access to scraped_pages, but cant directly pass scraped_pages to them because it would mean multiple owners. What we are doing here is creating a new reference (Arc) to the data (.clone()). This new arc can then be moved into the concurrent task, giving it access to the shared data.
+                let visited_mutex = Arc::clone(&self.visited);
+                let pages_mutex = Arc::clone(&self.pages_queue);
+
+                let db = Arc::clone(&db);
+
+                //? here the async means creating an async block of code that can be awaited.
+                //? The move means the closure takes ownership of the values it uses inside the closure (url, scraped_pages).
+                async move {
+                    {
+                        let mut visited_urls = visited_mutex.lock().await;
+                        if visited_urls.contains(&scrapable_page.get_url_arc()) {
+                            return;
+                        }
+                    }
+
+                    if let Ok(page) = scrapable_page.scrape_in_place::<C>().await {
+                        let linked_pages = page
+                            .get_all_page_links()
+                            .into_iter()
+                            .map(|page| Box::new(page) as Box<Page<dyn Scrapable, U>>)
+                            .collect::<Vec<Box<Page<dyn Scrapable, U>>>>();
+
+                        //? Lock and modify pages_to_scrape, then immediately drop the lock
+                        {
+                            let mut locked_pages_to_scrape = pages_mutex.lock().await;
+                            locked_pages_to_scrape.extend(linked_pages);
+                        } //? locked_pages_to_scrape is dropped here, releasing the lock
+                          //? Didn't need to do the same thing here as the guard is dropped at the end of the block
+                        let mut visited_urls = visited_mutex.lock().await;
+                        visited_urls.insert(page.get_url_arc());
+
+                        if let Err(e) = db.lock().await.save_content(page.get_content()).await {
+                            println!("Error saving content: {:#?}", e);
+                        }
+                    }
+                }
+            })
+            .await;
+
+        println!("Pages visited: {:#?}", self.visited.lock().await.len());
+
+        Box::pin(self.get_pages_recursive_internal::<C>(db, max_depth, current_depth + 1)).await;
     }
 }

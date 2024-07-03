@@ -5,7 +5,9 @@ use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 
 /// This is a trait that is used to represent a url.
-pub trait UrlTrait: Hash + Debug + TryFrom<String> + AsRef<String> + Eq {
+pub trait UrlTrait:
+    Hash + Debug + TryFrom<String> + AsRef<String> + Eq + Send + Sync + Clone
+{
     /// To create a new Url type from a string. Can also be used on the type itself.
     fn parse(url: impl Into<String>) -> std::result::Result<Self, Self::Error>
     where

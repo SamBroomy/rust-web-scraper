@@ -1,6 +1,6 @@
 use crate::Result;
 
-use super::UrlTrait;
+use crate::common::UrlTrait;
 
 use lazy_static::lazy_static;
 use rand::seq::SliceRandom;

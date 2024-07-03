@@ -1,13 +1,13 @@
 use crate::Result;
 
-use super::{LinkTo, Page, UrlTrait};
+use crate::common::{LinkTo, Page, UrlTrait};
 
 use scraper::Html;
 use std::collections::HashSet;
 use std::fmt::Debug;
 
 /// This is a trait that is used to represent a page state.
-pub trait ScrapableContent: Debug + Eq + Send {
+pub trait ScrapableContent: Debug + Eq + Send + Clone + Sync {
     /// The type of the Url.
     type Url: UrlTrait;
     /// This is a helper method that takes a url and a document and returns a Result of the type.
@@ -16,4 +16,6 @@ pub trait ScrapableContent: Debug + Eq + Send {
         Self: Sized;
 
     fn get_related_pages(&self) -> HashSet<Page<LinkTo, Self::Url>>;
+
+    fn get_title(&self) -> String;
 }

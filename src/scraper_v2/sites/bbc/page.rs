@@ -27,7 +27,7 @@ impl ScrapableContent for BBCContent {
         // TODO Break this function into smaller functions to be able to run async
         println!("Scraping article: {:?}", url);
 
-        let article = Self::extract_article(&document).ok_or(BBCError::NoArticleFound {
+        let article = Self::extract_article(document).ok_or(BBCError::NoArticleFound {
             url: url.full_url(),
         })?;
 
@@ -68,7 +68,10 @@ impl ScrapableContent for BBCContent {
 
     fn get_related_pages(&self) -> HashSet<Page<LinkTo, Self::Url>> {
         self.metadata.page_links.clone()
+    }
 
+    fn get_title(&self) -> String {
+        self.title.clone()
     }
 }
 
@@ -91,19 +94,19 @@ impl BBCContent {
         }
     }
 
-    fn extract_article<'a>(document: &'a Html) -> Option<ElementRef<'a>> {
+    fn extract_article(document: &Html) -> Option<ElementRef> {
         let article_selector = scraper::Selector::parse("article").unwrap();
         document.select(&article_selector).next()
     }
 
-    fn extract_title<'a>(article: &'a ElementRef) -> Option<String> {
+    fn extract_title(article: &ElementRef) -> Option<String> {
         let title_selector = scraper::Selector::parse("h1").unwrap();
         article
             .select(&title_selector)
             .next()
             .map(|title| title.text().collect::<String>())
     }
-    fn extract_content<'a>(article: &'a ElementRef) -> Option<Vec<String>> {
+    fn extract_content(article: &ElementRef) -> Option<Vec<String>> {
         let content_selector =
             scraper::Selector::parse("div[data-component='text-block']").unwrap();
         let content = article
@@ -117,7 +120,7 @@ impl BBCContent {
             Some(content)
         }
     }
-    fn extract_related_topics<'a>(article: &'a ElementRef) -> Option<Vec<String>> {
+    fn extract_related_topics(article: &ElementRef) -> Option<Vec<String>> {
         let related_topics_selector =
             scraper::Selector::parse("div[data-component='topic-list']").unwrap();
         let related_topics = article.select(&related_topics_selector).next()?;
