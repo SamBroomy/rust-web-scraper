@@ -2,7 +2,6 @@ use crate::common::UrlTrait;
 use crate::{Error, Result};
 
 use super::error::WikipediaError;
-use super::WikipediaContent;
 
 use lazy_regex::regex_is_match;
 use serde::{Deserialize, Serialize};

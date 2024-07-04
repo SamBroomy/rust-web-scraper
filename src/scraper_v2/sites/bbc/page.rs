@@ -3,11 +3,10 @@ use super::BBCUrl;
 use crate::common::{LinkTo, Page, ScrapableContent, UrlTrait};
 use crate::Result;
 
-use futures::stream::{self, StreamExt};
-use itertools::Itertools;
 use scraper::{ElementRef, Html};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, rc::Rc};
+use std::collections::HashSet;
+use tracing::debug;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct BBCContent {
@@ -17,15 +16,18 @@ pub struct BBCContent {
 }
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 struct Metadata {
+    url: BBCUrl,
     related_topics: Vec<String>,
     timestamp: String,
     page_links: HashSet<Page<LinkTo, BBCUrl>>,
 }
 impl ScrapableContent for BBCContent {
     type Url = BBCUrl;
+
+    #[tracing::instrument(skip(document), fields(url = %url.to_string()))]
     fn from_scraped_page(url: &Self::Url, document: &Html) -> Result<Self> {
         // TODO Break this function into smaller functions to be able to run async
-        println!("Scraping article: {:?}", url);
+        debug!("Scraping article from BBC");
 
         let article = Self::extract_article(document).ok_or(BBCError::NoArticleFound {
             url: url.full_url(),
@@ -60,6 +62,7 @@ impl ScrapableContent for BBCContent {
         Ok(BBCContent::new(
             title,
             content,
+            url.clone(),
             related_topics,
             timestamp,
             page_links,
@@ -73,12 +76,17 @@ impl ScrapableContent for BBCContent {
     fn get_title(&self) -> String {
         self.title.clone()
     }
+
+    fn get_url(&self) -> Self::Url {
+        self.metadata.url.clone()
+    }
 }
 
 impl BBCContent {
     fn new(
         title: String,
         content: Vec<String>,
+        url: BBCUrl,
         related_topics: Vec<String>,
         timestamp: String,
         page_links: HashSet<Page<LinkTo, BBCUrl>>,
@@ -87,6 +95,7 @@ impl BBCContent {
             title,
             content,
             metadata: Metadata {
+                url,
                 related_topics,
                 timestamp,
                 page_links,

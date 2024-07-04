@@ -18,11 +18,26 @@ use surrealdb::engine::remote::ws::{Client, Ws};
 use surrealdb::opt::auth::Root;
 use surrealdb::Surreal;
 use tokio::sync::Mutex;
+
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 //use tokio::sync::Mutex;
+
+fn setup_tracing() {
+    let filter = EnvFilter::from_default_env()
+        .add_directive("html5ever=error".parse().unwrap())
+        .add_directive("selectors=error".parse().unwrap())
+        .add_directive("debug".parse().unwrap());
+
+    tracing_subscriber::registry()
+        .with(fmt::layer().with_span_events(fmt::format::FmtSpan::CLOSE))
+        .with(filter)
+        .init();
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
     //let db = get_db("scraping").await?;
+    setup_tracing();
 
     let url = BBCUrl::parse("https://www.bbc.co.uk/news/articles/ceddenl8xz4o")?;
     println!("{:#?}", url);
@@ -85,9 +100,9 @@ async fn main() -> Result<()> {
         .add_pages(vec![page4, page5, page6, page4_2, page5_2])
         .await;
 
-    scraper.scrape_pages_recursive(3).await;
+    scraper.scrape_pages_recursive(2).await;
 
-    println!("Scraper: {:#?}", scraper);
+    //println!("Scraper: {:#?}", scraper);
 
     println!("Finished!");
 

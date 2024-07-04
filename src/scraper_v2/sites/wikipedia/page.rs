@@ -1,11 +1,10 @@
-use super::error::WikipediaError;
 use super::WikipediaUrl;
-use crate::common::{LinkTo, Page, ScrapableContent, UrlTrait};
+use crate::common::{LinkTo, Page, ScrapableContent};
 use crate::Result;
 
-use scraper::{ElementRef, Html};
+use scraper::Html;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, rc::Rc};
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct WikipediaContent {
@@ -29,6 +28,9 @@ impl ScrapableContent for WikipediaContent {
     }
 
     fn get_title(&self) -> String {
+        todo!()
+    }
+    fn get_url(&self) -> Self::Url {
         todo!()
     }
 }

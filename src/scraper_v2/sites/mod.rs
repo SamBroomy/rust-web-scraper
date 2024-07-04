@@ -7,7 +7,7 @@ use crate::Result;
 
 pub use error::*;
 
-use surrealdb::engine::remote::ws::{Client, Ws};
+use surrealdb::engine::remote::ws::Client;
 use surrealdb::Surreal;
 
 use async_trait::async_trait;

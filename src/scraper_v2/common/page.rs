@@ -2,16 +2,15 @@ use crate::Result;
 
 use crate::common::{make_request, ScrapableContent, UrlTrait, DB};
 
-use futures::stream::futures_unordered::IntoIter;
 use futures::stream::{self, StreamExt};
-use scraper::Html;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::Mutex;
-use tracing::{info, instrument};
+use tracing::{error, field, info, instrument, warn, Span};
 
 /// A trait for the state of a page.
 pub trait PageState: Debug + Send + Sync {
@@ -168,17 +167,22 @@ impl Scrapable for LinkTo {
 
 impl<U: UrlTrait, S: Scrapable> Page<S, U> {
     /// Scrape the page. This will make a request to the page and scrape the content. The content is then converted into a Scraped type.
+    #[instrument(
+        skip_all,
+        name = "Scraped Page",
+        level = "info",
+        fields(linked_article)
+    )]
     pub async fn scrape<C>(self) -> Result<Page<WasScraped<C>, U>>
     where
         C: ScrapableContent<Url = U>,
     {
-        let title: Option<String> = self.state.get_title();
-        let url = self.url.as_ref();
-        info!(
-            "Scraping: {} - {}",
-            url.to_string(),
-            title.as_ref().unwrap_or(&"[No title]".to_string())
+        let title = self.state.get_title();
+        tracing::Span::current().record(
+            "linked_article",
+            title.as_ref().unwrap_or(&"[Scraping from URL]".to_string()),
         );
+        let url = self.url.as_ref();
         let html = make_request(url).await?;
         let page = C::from_scraped_page(url, &html)?;
 
@@ -191,18 +195,22 @@ impl<U: UrlTrait, S: Scrapable> Page<S, U> {
 impl<U: UrlTrait, S: Scrapable + ?Sized> Page<S, U> {
     /// Scrape the page. This will make a request to the page and scrape the content. The content is then converted into a Scraped type.
     /// Would prefer if this was consuming self but it's not possible because of the transition method.
-    #[instrument]
+    #[instrument(
+        skip_all,
+        name = "Scraped Page (Box)",
+        level = "info",
+        fields(linked_article)
+    )]
     pub async fn scrape_in_place<C>(self: Box<Self>) -> Result<Page<WasScraped<C>, U>>
     where
         C: ScrapableContent<Url = U>,
     {
         let title = self.state.get_title();
-        let url = self.url.as_ref();
-        info!(
-            "Scraping: {} - {}",
-            url.to_string(),
-            title.as_ref().unwrap_or(&"[No title]".to_string())
+        tracing::Span::current().record(
+            "linked_article",
+            title.as_ref().unwrap_or(&"[Scraping from URL]".to_string()),
         );
+        let url = self.url.as_ref();
         let html = make_request(url).await?;
         let page = C::from_scraped_page(url, &html)?;
         // Because we are going from a unsized type to a sized type, we can take the data out of the box and put it back on the stack.
@@ -262,31 +270,46 @@ where
         }
     }
 
+    #[instrument(skip_all, name = "Add Page", level = "info", fields(page = %page.get_url_arc().to_string()))]
     pub async fn add_page(&mut self, page: Box<Page<dyn Scrapable, U>>) {
         let mut pages_queue = self.pages_queue.lock().await;
         pages_queue.push_back(page);
     }
 
+    #[instrument(skip_all, name = "Add Pages", level = "info", fields(pages))]
     pub async fn add_pages<I>(&mut self, pages: I)
     where
         I: IntoIterator<Item = Box<Page<dyn Scrapable, U>>> + Send,
     {
         let mut pages_list = self.pages_queue.lock().await;
+        let pages_len = pages_list.len();
+
         pages_list.extend(pages);
+
+        tracing::Span::current().record("pages", pages_list.len() - pages_len);
     }
 
+    #[instrument(skip(self, db), name = "Scrape Pages Recursive", level = "warn")]
     pub async fn scrape_pages_recursive<C: ScrapableContent<Url = U>>(
         &mut self,
         db: DB<C>,
         mut max_depth: u32,
     ) {
+        assert!(max_depth > 0, "Max depth must be greater than 0!");
         if max_depth > 10 {
-            println!("Max depth is too high, setting to 10!");
+            warn!("Max depth is too high, setting to 10!");
             max_depth = 10;
         }
         let max_depth = max_depth;
 
-        self.get_pages_recursive_internal::<C>(db, max_depth, 0)
+        warn!(
+            "Scraping pages recursively with max depth: {:#?}",
+            max_depth
+        );
+
+        let parent_span = Span::current();
+
+        self.get_pages_recursive_internal::<C>(db, max_depth, 0, parent_span)
             .await;
     }
 
@@ -309,6 +332,36 @@ where
             .collect::<Vec<Box<Page<dyn Scrapable, U>>>>()
     }
 
+    #[instrument(
+        skip(self),
+        name = "Extract Unique Pages",
+        level = "info",
+        fields(pages_to_scrape, unique_pages, duplicates_dropped, not_visited)
+    )]
+    async fn extract_unique_pages_to_scrape(&mut self) -> Vec<Box<Page<dyn Scrapable, U>>> {
+        let pages_to_scrape = self.drain_pages().await;
+        let len_pages_to_scrape = pages_to_scrape.len();
+        Span::current().record("pages_to_scrape", len_pages_to_scrape);
+
+        let mut unique_pages_to_scrape = self.get_unique_pages_to_scrape(pages_to_scrape);
+        let len_unique_pages_to_scrape = unique_pages_to_scrape.len();
+        Span::current().record("unique_pages", len_unique_pages_to_scrape);
+
+        Span::current().record(
+            "duplicates_dropped",
+            len_pages_to_scrape - len_unique_pages_to_scrape,
+        );
+
+        self.remove_visited_pages(&mut unique_pages_to_scrape).await;
+
+        Span::current().record(
+            "not_visited",
+            len_unique_pages_to_scrape - unique_pages_to_scrape.len(),
+        );
+
+        unique_pages_to_scrape
+    }
+
     /// Remove pages that have already been visited from the list of pages to scrape.
     ///? Again, trying to keep the scope of the lock as small as possible.
     async fn remove_visited_pages(&self, pages_to_scrape: &mut Vec<Box<Page<dyn Scrapable, U>>>) {
@@ -321,29 +374,28 @@ where
         db: DB<C>,
         max_depth: u32,
         current_depth: u32,
+        parent_span: Span,
     ) {
+        let start_time = Instant::now();
+        let span = tracing::warn_span!(
+            parent: &parent_span,
+            "Recursive Call",
+            depth = current_depth,
+            pages_to_scrape = field::Empty,
+            unique_pages = field::Empty,
+        );
+
+        let _enter = span.enter();
+
         if current_depth > max_depth {
+            warn!("Max depth reached!");
             return;
         }
-
-        println!(
+        warn!(
             " ------------------------------------- ITERATION {} -------------------------------------",
             current_depth);
 
-        let mut pages_to_scrape = self.drain_pages().await;
-
-        println!("Pages to scrape: {:#?}", pages_to_scrape);
-
-        let mut unique_pages_to_scrape = self.get_unique_pages_to_scrape(pages_to_scrape);
-
-        println!("Unique Pages: {:#?}", unique_pages_to_scrape);
-
-        self.remove_visited_pages(&mut unique_pages_to_scrape).await;
-
-        println!(
-            "Pages to scrape after removing visited pages: {:#?}",
-            unique_pages_to_scrape
-        );
+        let unique_pages_to_scrape = self.extract_unique_pages_to_scrape().await;
 
         stream::iter(unique_pages_to_scrape.into_iter())
             .for_each_concurrent(None, |scrapable_page| {
@@ -356,8 +408,9 @@ where
                 //? here the async means creating an async block of code that can be awaited.
                 //? The move means the closure takes ownership of the values it uses inside the closure (url, scraped_pages).
                 async move {
+                    //? Lock the visited_urls, check if the url has been visited, if it has return.
                     {
-                        let mut visited_urls = visited_mutex.lock().await;
+                        let visited_urls = visited_mutex.lock().await;
                         if visited_urls.contains(&scrapable_page.get_url_arc()) {
                             return;
                         }
@@ -376,19 +429,37 @@ where
                             locked_pages_to_scrape.extend(linked_pages);
                         } //? locked_pages_to_scrape is dropped here, releasing the lock
                           //? Didn't need to do the same thing here as the guard is dropped at the end of the block
-                        let mut visited_urls = visited_mutex.lock().await;
-                        visited_urls.insert(page.get_url_arc());
+                        {
+                            let mut visited_urls = visited_mutex.lock().await;
+                            visited_urls.insert(page.get_url_arc());
+                        }
 
                         if let Err(e) = db.lock().await.save_content(page.get_content()).await {
-                            println!("Error saving content: {:#?}", e);
+                            error!("Error saving content: {:#?}", e);
                         }
                     }
                 }
             })
             .await;
 
-        println!("Pages visited: {:#?}", self.visited.lock().await.len());
+        info!("Pages visited: {:#?}", self.visited.lock().await.len());
 
-        Box::pin(self.get_pages_recursive_internal::<C>(db, max_depth, current_depth + 1)).await;
+        drop(_enter);
+
+        Box::pin(self.get_pages_recursive_internal::<C>(
+            db,
+            max_depth,
+            current_depth + 1,
+            parent_span.clone(),
+        ))
+        .await;
+
+        // Re-enter the span to log total time
+        let _reenter = span.enter();
+        let total_elapsed = start_time.elapsed();
+        warn!(
+            total_time_spent_ms = total_elapsed.as_millis(),
+            "Total time spent including child recursions at depth {:#}", current_depth
+        );
     }
 }

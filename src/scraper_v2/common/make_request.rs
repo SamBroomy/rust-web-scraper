@@ -4,14 +4,13 @@ use crate::common::UrlTrait;
 
 use lazy_static::lazy_static;
 use rand::seq::SliceRandom;
-use reqwest::{Client, IntoUrl, Response};
+use reqwest::Client;
 use scraper::Html;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
-use tokio::task;
 use tokio::time::{sleep, Duration};
+use tracing::debug;
 use tracing::instrument;
-use tracing::{debug, info};
 
 lazy_static! {
     static ref SEMAPHORE: Arc<Semaphore> = Arc::new(Semaphore::new(50)); // 10 permits
@@ -54,18 +53,18 @@ lazy_static! {
 }
 
 /// Make a request to a given URL and return the scraper HTML content
-#[instrument]
+#[instrument(name="make_request", level="debug", skip(url), fields(url = %url.to_string()))]
 pub async fn make_request(url: &impl UrlTrait) -> Result<Html> {
     debug!("Making request to: {:?}", url.full_url());
     sleep(Duration::from_millis(50)).await; //? something pretty arbitrary but find it helps when sending off lots of requests at once
     let _permit = SEMAPHORE.acquire().await;
     let user_agent = USER_AGENTS.choose(&mut rand::thread_rng()).unwrap();
+    debug!("Sending request");
     let response = CLIENT
         .get(url.full_url())
         .header("User-Agent", *user_agent)
         .send()
         .await?;
     let html_content = response.text().await?;
-    info!("---> Finished request to: {:?}", url.full_url());
     Ok(Html::parse_document(&html_content))
 }

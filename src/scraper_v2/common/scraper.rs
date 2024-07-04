@@ -1,14 +1,6 @@
-use crate::Result;
+use crate::common::{MockDB, Page, PageHandler, Scrapable, ScrapableContent, UrlTrait, DB};
 
-use crate::common::{
-    MockDB, Page, PageHandler, PageState, Scrapable, ScrapableContent, Scraped, UrlTrait,
-    WasScraped, DB,
-};
-
-use async_trait::async_trait;
-use lazy_static::LazyStatic;
 use std::cmp::Eq;
-use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 

@@ -18,4 +18,5 @@ pub trait ScrapableContent: Debug + Eq + Send + Clone + Sync {
     fn get_related_pages(&self) -> HashSet<Page<LinkTo, Self::Url>>;
 
     fn get_title(&self) -> String;
+    fn get_url(&self) -> Self::Url;
 }

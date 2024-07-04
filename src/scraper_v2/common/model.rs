@@ -1,12 +1,13 @@
 use crate::Result;
 
-use crate::common::{Page, Scrapable, ScrapableContent};
+use crate::common::{ScrapableContent, UrlTrait};
 
 use async_trait::async_trait;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tracing::instrument;
 
 #[async_trait]
 pub trait DatabaseService<C: ScrapableContent>: Send + Sync + Debug {
@@ -21,10 +22,11 @@ pub struct MockDB<C: ScrapableContent> {
 }
 #[async_trait]
 impl<C: ScrapableContent> DatabaseService<C> for MockDB<C> {
+    #[instrument(skip_all, name = "MockDB::save_content", level = "debug", fields(url = %c.get_url().to_string()))]
     async fn save_content(&self, c: &C) -> Result<()> {
         {
             let mut content = self.content.lock().await;
-            content.insert(c.get_title(), c.clone());
+            content.insert(c.get_url().to_string(), c.clone());
         }
         Ok(())
     }

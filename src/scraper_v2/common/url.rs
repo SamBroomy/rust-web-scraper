@@ -1,8 +1,7 @@
-use crate::{Error, Result};
+use crate::Result;
 
-use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 
 /// This is a trait that is used to represent a url.
 pub trait UrlTrait:
