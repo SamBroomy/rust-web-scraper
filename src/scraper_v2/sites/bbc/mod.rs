@@ -4,4 +4,5 @@ mod scraper;
 mod url;
 
 pub use page::BBCContent;
+pub use scraper::BBCScraper;
 pub use url::BBCUrl;

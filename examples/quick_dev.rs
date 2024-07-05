@@ -1,22 +1,11 @@
-use core::hash;
-use std::collections::{HashSet, VecDeque};
-use std::rc::Rc;
 use std::sync::Arc;
-use std::{clone, mem};
 
-use my_crate::get_db::get_db;
 use my_crate::scraper_v2::common::{
-    make_request, LinkTo, MockDB, Page, PageHandler, PageState, Scrapable, Scraped, Scraper,
-    ToScrape, UrlTrait, WasScraped,
+    MockDB, Page, Scrapable, Scraper, SurrealDb, ToScrape, UrlTrait, WasScraped, DB,
 };
-use my_crate::scraper_v2::sites::bbc::{BBCContent, BBCUrl};
+use my_crate::scraper_v2::sites::bbc::{BBCContent, BBCScraper, BBCUrl};
 use my_crate::scraper_v2::Result;
 
-use futures::stream::futures_unordered::IntoIter;
-use futures::stream::{self, StreamExt};
-use surrealdb::engine::remote::ws::{Client, Ws};
-use surrealdb::opt::auth::Root;
-use surrealdb::Surreal;
 use tokio::sync::Mutex;
 
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -94,17 +83,29 @@ async fn main() -> Result<()> {
 
     // ph.scrape_pages_recursive(db.clone(), 3).await;
 
-    let mut scraper = Scraper::<BBCUrl, BBCContent>::default();
+    println!("_____________________ BBC Scraper ________________________");
+
+    let db: DB<MockDB> = Arc::new(Mutex::new(MockDB::new()));
+
+    let db: DB<SurrealDb> = Arc::new(Mutex::new(SurrealDb::new(None).await));
+
+    let bbc_scraper = BBCScraper;
+
+    let mut scraper = Scraper::new(bbc_scraper);
+
+    scraper.initialize().await?;
 
     scraper
         .add_pages(vec![page4, page5, page6, page4_2, page5_2])
         .await;
 
-    scraper.scrape_pages_recursive(2).await;
-
-    //println!("Scraper: {:#?}", scraper);
+    scraper
+        .scrape_pages_recursive::<BBCContent, _>(&db, 2)
+        .await;
 
     println!("Finished!");
+
+    //println!("{:#?}", db.lock().await.get_content().lock().await);
 
     Ok(())
 }

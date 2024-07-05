@@ -1,6 +1,6 @@
 use crate::Result;
 
-use crate::common::{make_request, ScrapableContent, UrlTrait, DB};
+use crate::common::{make_request, DatabaseService, ScrapableContent, UrlTrait, DB};
 
 use futures::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -29,7 +29,7 @@ pub struct LinkTo {
 }
 
 /// A struct representing a page that has been scraped. The content field is the scraped content of the page.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]
 pub struct WasScraped<C: ScrapableContent> {
     content: C,
     link_title: Option<String>,
@@ -244,24 +244,15 @@ where
 
 pub type ScrapablePagesQueue<U> = Arc<Mutex<VecDeque<Box<Page<dyn Scrapable, U>>>>>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PageHandler<U: UrlTrait> {
     visited: Arc<Mutex<HashSet<Arc<U>>>>,
     pages_queue: ScrapablePagesQueue<U>,
 }
 
-impl<U: UrlTrait> Default for PageHandler<U>
-where
-    U: UrlTrait + Eq,
-{
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl<U: UrlTrait> PageHandler<U>
 where
-    U: UrlTrait + Eq,
+    U: UrlTrait,
 {
     pub fn new() -> Self {
         Self {
@@ -290,9 +281,12 @@ where
     }
 
     #[instrument(skip(self, db), name = "Scrape Pages Recursive", level = "warn")]
-    pub async fn scrape_pages_recursive<C: ScrapableContent<Url = U>>(
+    pub async fn scrape_pages_recursive<
+        C: ScrapableContent<Url = U> + 'static,
+        D: DatabaseService,
+    >(
         &mut self,
-        db: DB<C>,
+        db: DB<D>,
         mut max_depth: u32,
     ) {
         assert!(max_depth > 0, "Max depth must be greater than 0!");
@@ -309,7 +303,7 @@ where
 
         let parent_span = Span::current();
 
-        self.get_pages_recursive_internal::<C>(db, max_depth, 0, parent_span)
+        self.get_pages_recursive_internal::<C, D>(db, max_depth, 0, parent_span)
             .await;
     }
 
@@ -369,9 +363,12 @@ where
         pages_to_scrape.retain(|page| !visited.contains(&page.get_url_arc()));
     }
 
-    async fn get_pages_recursive_internal<C: ScrapableContent<Url = U>>(
+    async fn get_pages_recursive_internal<
+        C: ScrapableContent<Url = U> + 'static,
+        D: DatabaseService,
+    >(
         &mut self,
-        db: DB<C>,
+        db: DB<D>,
         max_depth: u32,
         current_depth: u32,
         parent_span: Span,
@@ -446,7 +443,7 @@ where
 
         drop(_enter);
 
-        Box::pin(self.get_pages_recursive_internal::<C>(
+        Box::pin(self.get_pages_recursive_internal::<C, D>(
             db,
             max_depth,
             current_depth + 1,

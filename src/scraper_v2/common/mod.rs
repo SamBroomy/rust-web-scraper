@@ -9,8 +9,8 @@ pub use make_request::make_request;
 pub use page::{LinkTo, Page, PageHandler, PageState, Scrapable, Scraped, ToScrape, WasScraped};
 pub use url::UrlTrait;
 
-pub use scraper::Scraper;
+pub use scraper::{Scraper, SiteSpecificScraper};
 
 pub use content::ScrapableContent;
 
-pub use model::{DatabaseService, MockDB, DB};
+pub use model::{DatabaseService, MockDB, SurrealDb, DB};

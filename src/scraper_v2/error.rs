@@ -27,6 +27,8 @@ pub enum Error {
     Reqwest(reqwest::Error),
     #[from]
     Anyhow(anyhow::Error),
+    #[from]
+    Surreal(surrealdb::Error),
 }
 
 // For custom error messages.

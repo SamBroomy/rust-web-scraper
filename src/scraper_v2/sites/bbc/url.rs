@@ -5,6 +5,7 @@ use super::error::BBCError;
 
 use lazy_regex::regex_is_match;
 use serde::{Deserialize, Serialize};
+use tracing::{instrument, Span};
 
 use std::hash::{Hash, Hasher};
 
@@ -45,8 +46,22 @@ impl UrlTrait for BBCUrl {
     fn to_string(&self) -> String {
         self.0.clone()
     }
+
+    fn initialise() -> Self {
+        Self("/news".to_string())
+    }
+
+    #[instrument(
+        skip_all,
+        name = "Parse BBC URL",
+        level = "trace",
+        err(level = "trace"),
+        fields(stripped_url)
+    )]
     fn parse_url(url: &str) -> Result<String> {
         let stripped_url = url.trim().strip_prefix(Self::base_url()).unwrap_or(url);
+
+        Span::current().record("stripped_url", &stripped_url);
 
         if !stripped_url.starts_with("/news") || regex_is_match!(r"/(Special:|File:)", stripped_url)
         {

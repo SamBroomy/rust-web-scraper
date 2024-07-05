@@ -68,4 +68,8 @@ impl UrlTrait for WikipediaUrl {
 
         Ok(stripped_url.to_string())
     }
+
+    fn initialise() -> Self {
+        todo!()
+    }
 }

@@ -24,6 +24,9 @@ pub enum BBCError {
     NoRelatedTopicsFound {
         url: String,
     },
+    InitializeError {
+        url: String,
+    },
 }
 
 // Error boilerplate.

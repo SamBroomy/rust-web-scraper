@@ -6,7 +6,6 @@ use crate::Result;
 use scraper::{ElementRef, Html};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use tracing::debug;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct BBCContent {
@@ -26,9 +25,6 @@ impl ScrapableContent for BBCContent {
 
     #[tracing::instrument(skip(document), fields(url = %url.to_string()))]
     fn from_scraped_page(url: &Self::Url, document: &Html) -> Result<Self> {
-        // TODO Break this function into smaller functions to be able to run async
-        debug!("Scraping article from BBC");
-
         let article = Self::extract_article(document).ok_or(BBCError::NoArticleFound {
             url: url.full_url(),
         })?;
@@ -50,14 +46,8 @@ impl ScrapableContent for BBCContent {
 
         let timestamp = Self::extract_timestamp(&article);
 
-        let page_links = Self::extract_related_links(&article)
-            .into_iter()
-            .filter_map(|(url, title)| {
-                let url = BBCUrl::try_from(url).ok()?;
-                let title = title.clone();
-                Some(Page::<LinkTo, BBCUrl>::new(url, title))
-            })
-            .collect::<HashSet<Page<LinkTo, BBCUrl>>>();
+        let page_links = Self::extract_related_links(&article);
+        let page_links = Self::convert_to_page(page_links);
 
         Ok(BBCContent::new(
             title,
@@ -142,7 +132,7 @@ impl BBCContent {
                 .collect::<Vec<String>>(),
         )
     }
-    fn extract_related_links(article: &ElementRef) -> Vec<(String, String)> {
+    pub fn extract_related_links(article: &ElementRef) -> Vec<(String, String)> {
         let related_links_selector = scraper::Selector::parse("a").unwrap();
         article
             .select(&related_links_selector)
@@ -152,6 +142,17 @@ impl BBCContent {
                 Some((url, text))
             })
             .collect::<Vec<(String, String)>>()
+    }
+    pub fn convert_to_page(
+        i: impl IntoIterator<Item = (String, String)>,
+    ) -> HashSet<Page<LinkTo, BBCUrl>> {
+        i.into_iter()
+            .filter_map(|(url, title)| {
+                let url = BBCUrl::try_from(url).ok()?;
+                let title = title.clone();
+                Some(Page::<LinkTo, BBCUrl>::new(url, title))
+            })
+            .collect::<HashSet<Page<LinkTo, BBCUrl>>>()
     }
     fn extract_timestamp(article: &ElementRef) -> String {
         // <time data-testid="timestamp" datetime="2024-06-10T06:58:21.378Z">10 June 2024, 07:58 BST</time>
