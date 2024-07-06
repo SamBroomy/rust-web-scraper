@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "my_crate"
+name = "recursive_scraper"
 path = "src/main.rs"
 
 [workspace.lints.rust]
@@ -17,7 +17,7 @@ clone_on_ref_ptr = "warn"
 workspace = true
 
 [dependencies]
-reqwest = { version = "0.12", features = ["blocking"] }
+reqwest = "0.12"
 scraper = "0.19"
 tokio = { version = "1", features = ["full", "macros", "rt-multi-thread"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -27,7 +27,6 @@ surrealdb = "1.5"
 anyhow = "1"
 futures = "0.3"
 lazy_static = "1.5"
-itertools = "0.13"
 lazy-regex = "3.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
