@@ -1,7 +1,7 @@
 pub mod error;
-mod page;
+mod content;
 mod scraper;
 mod url;
 
-pub use page::WikipediaContent;
+pub use content::WikipediaContent;
 pub use url::WikipediaUrl;

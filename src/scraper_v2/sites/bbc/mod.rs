@@ -1,8 +1,8 @@
 pub mod error;
-mod page;
+mod content;
 mod scraper;
 mod url;
 
-pub use page::BBCContent;
+pub use content::BBCContent;
 pub use scraper::BBCScraper;
 pub use url::{BBCRelatedTopicUrl, BBCNewsUrl};

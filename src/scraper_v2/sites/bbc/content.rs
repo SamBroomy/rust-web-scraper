@@ -164,8 +164,6 @@ impl BBCContent {
             .collect::<HashSet<Page<LinkTo, BBCNewsUrl>>>()
     }
     fn extract_timestamp(article: &ElementRef) -> String {
-        // <time data-testid="timestamp" datetime="2024-06-10T06:58:21.378Z">10 June 2024, 07:58 BST</time>
-        // I want to extract out the datetime attribute
         let timestamp_selector = scraper::Selector::parse("time").unwrap();
         article
             .select(&timestamp_selector)
