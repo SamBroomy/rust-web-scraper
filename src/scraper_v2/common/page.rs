@@ -244,6 +244,33 @@ where
 
 pub type ScrapablePagesQueue<U> = Arc<Mutex<VecDeque<Box<Page<dyn Scrapable, U>>>>>;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct RelatedPage<U: UrlTrait> {
+    url: U,
+    title: String,
+}
+
+impl<U: UrlTrait> RelatedPage<U> {
+    pub fn new(url: U, title: String) -> Self {
+        Self { url, title }
+    }
+
+    pub fn get_url(&self) -> &U {
+        &self.url
+    }
+
+    pub fn get_title(&self) -> &str {
+        &self.title
+    }
+
+    pub fn into_pages(self) -> Vec<Page<LinkTo, U>> {
+        // Scrape the page and return a list of LinkTo pages
+
+        //Page::new_link_to(self.url, self.title);
+        todo!()
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct PageHandler<U: UrlTrait> {
     visited: Arc<Mutex<HashSet<Arc<U>>>>,

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use my_crate::scraper_v2::common::{
     MockDB, Page, Scrapable, Scraper, SurrealDb, ToScrape, UrlTrait, WasScraped, DB,
 };
-use my_crate::scraper_v2::sites::bbc::{BBCContent, BBCScraper, BBCUrl};
+use my_crate::scraper_v2::sites::bbc::{BBCContent, BBCNewsUrl, BBCScraper};
 use my_crate::scraper_v2::Result;
 
 use tokio::sync::Mutex;
@@ -28,48 +28,49 @@ async fn main() -> Result<()> {
     //let db = get_db("scraping").await?;
     setup_tracing();
 
-    let url = BBCUrl::parse("https://www.bbc.co.uk/news/articles/ceddenl8xz4o")?;
+    let url = BBCNewsUrl::parse("https://www.bbc.co.uk/news/articles/ceddenl8xz4o")?;
     println!("{:#?}", url);
     let page1 = Page::new_to_scrape(url);
     println!("{:#?}", page1);
     let page1 = page1.scrape::<BBCContent>().await?;
     println!("{:#?}", page1);
 
-    let url = BBCUrl::parse("https://www.bbc.co.uk/news/articles/ceddenl8xz4o")?;
+    let url = BBCNewsUrl::parse("https://www.bbc.co.uk/news/articles/ceddenl8xz4o")?;
     println!("{:#?}", url);
-    let page1: Page<ToScrape, BBCUrl> = Page::new_to_scrape(url);
-    let page1: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(page1);
-    let page1: Page<WasScraped<BBCContent>, BBCUrl> = page1.scrape_in_place::<BBCContent>().await?;
+    let page1: Page<ToScrape, BBCNewsUrl> = Page::new_to_scrape(url);
+    let page1: Box<Page<dyn Scrapable, BBCNewsUrl>> = Box::new(page1);
+    let page1: Page<WasScraped<BBCContent>, BBCNewsUrl> =
+        page1.scrape_in_place::<BBCContent>().await?;
 
-    let url = BBCUrl::parse("https://www.bbc.co.uk/news/articles/c8009e2z4xlo")?;
+    let url = BBCNewsUrl::parse("https://www.bbc.co.uk/news/articles/c8009e2z4xlo")?;
     let page2 = Page::new_link_to(url, "Hello");
     let page2 = page2.scrape::<BBCContent>().await?;
     let page2 = Box::new(page2);
 
     let page3 = Box::new(
-        Page::new_to_scrape(BBCUrl::parse(
+        Page::new_to_scrape(BBCNewsUrl::parse(
             "https://www.bbc.co.uk/news/articles/cg66g0neweko",
         )?)
         .scrape::<BBCContent>()
         .await?,
     );
 
-    let url = BBCUrl::parse("https://www.bbc.co.uk/news/articles/c0661dnmzezo")?;
-    let page4: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(Page::new_to_scrape(url));
-    let page5: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(Page::new_link_to(
-        BBCUrl::parse("https://www.bbc.co.uk/news/articles/c6ppd6p12k4o")?,
+    let url = BBCNewsUrl::parse("https://www.bbc.co.uk/news/articles/c0661dnmzezo")?;
+    let page4: Box<Page<dyn Scrapable, BBCNewsUrl>> = Box::new(Page::new_to_scrape(url));
+    let page5: Box<Page<dyn Scrapable, BBCNewsUrl>> = Box::new(Page::new_link_to(
+        BBCNewsUrl::parse("https://www.bbc.co.uk/news/articles/c6ppd6p12k4o")?,
         "Greens vow tax hike on wealthier to fund NHS and housing",
     ));
-    let page6: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(Page::new_to_scrape(BBCUrl::parse(
-        "https://www.bbc.co.uk/news/articles/c9rrwe0ne7ro",
-    )?));
+    let page6: Box<Page<dyn Scrapable, BBCNewsUrl>> = Box::new(Page::new_to_scrape(
+        BBCNewsUrl::parse("https://www.bbc.co.uk/news/articles/c9rrwe0ne7ro")?,
+    ));
 
     //Same as page 4
-    let page4_2: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(Page::new_to_scrape(BBCUrl::parse(
-        "https://www.bbc.co.uk/news/articles/c0661dnmzezo",
-    )?));
-    let page5_2: Box<Page<dyn Scrapable, BBCUrl>> = Box::new(Page::new_link_to(
-        BBCUrl::parse("https://www.bbc.co.uk/news/articles/c6ppd6p12k4o")?,
+    let page4_2: Box<Page<dyn Scrapable, BBCNewsUrl>> = Box::new(Page::new_to_scrape(
+        BBCNewsUrl::parse("https://www.bbc.co.uk/news/articles/c0661dnmzezo")?,
+    ));
+    let page5_2: Box<Page<dyn Scrapable, BBCNewsUrl>> = Box::new(Page::new_link_to(
+        BBCNewsUrl::parse("https://www.bbc.co.uk/news/articles/c6ppd6p12k4o")?,
         "Greens vow tax hike on wealthier to fund NHS and housing",
     ));
     // let db = MockDB::<BBCContent>::default();
@@ -93,6 +94,8 @@ async fn main() -> Result<()> {
 
     let mut scraper = Scraper::new(bbc_scraper);
 
+    // TODO: Get data from db and add already scraped pages to scraper
+
     scraper.initialize().await?;
 
     scraper
@@ -100,7 +103,7 @@ async fn main() -> Result<()> {
         .await;
 
     scraper
-        .scrape_pages_recursive::<BBCContent, _>(&db, 2)
+        .scrape_pages_recursive::<BBCContent, _>(&db, 10)
         .await;
 
     println!("Finished!");

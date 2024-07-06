@@ -1,6 +1,6 @@
 use super::error::BBCError;
-use super::BBCUrl;
-use crate::common::{LinkTo, Page, ScrapableContent, UrlTrait};
+use super::{BBCNewsUrl, BBCRelatedTopicUrl};
+use crate::common::{LinkTo, Page, RelatedPage, ScrapableContent, UrlTrait};
 use crate::Result;
 
 use scraper::{ElementRef, Html};
@@ -15,13 +15,15 @@ pub struct BBCContent {
 }
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 struct Metadata {
-    url: BBCUrl,
-    related_topics: Vec<String>,
+    url: BBCNewsUrl,
+    related_topics: HashSet<RelatedPage<BBCRelatedTopicUrl>>,
     timestamp: String,
-    page_links: HashSet<Page<LinkTo, BBCUrl>>,
+    page_links: HashSet<Page<LinkTo, BBCNewsUrl>>,
 }
+
 impl ScrapableContent for BBCContent {
-    type Url = BBCUrl;
+    type Url = BBCNewsUrl;
+    type RelatedUrl = BBCRelatedTopicUrl;
 
     #[tracing::instrument(skip(document), fields(url = %url.to_string()))]
     fn from_scraped_page(url: &Self::Url, document: &Html) -> Result<Self> {
@@ -36,8 +38,6 @@ impl ScrapableContent for BBCContent {
         let content = Self::extract_content(&article).ok_or(BBCError::NoContentFound {
             url: url.full_url(),
         })?;
-
-        // Image Selector; to Vec<Image(Url, Caption)>
 
         let related_topics =
             Self::extract_related_topics(&article).ok_or(BBCError::NoRelatedTopicsFound {
@@ -63,6 +63,10 @@ impl ScrapableContent for BBCContent {
         self.metadata.page_links.clone()
     }
 
+    fn get_related_topics(&self) -> HashSet<RelatedPage<Self::RelatedUrl>> {
+        self.metadata.related_topics.clone()
+    }
+
     fn get_title(&self) -> String {
         self.title.clone()
     }
@@ -76,10 +80,10 @@ impl BBCContent {
     fn new(
         title: String,
         content: Vec<String>,
-        url: BBCUrl,
-        related_topics: Vec<String>,
+        url: BBCNewsUrl,
+        related_topics: HashSet<RelatedPage<BBCRelatedTopicUrl>>,
         timestamp: String,
-        page_links: HashSet<Page<LinkTo, BBCUrl>>,
+        page_links: HashSet<Page<LinkTo, BBCNewsUrl>>,
     ) -> Self {
         BBCContent {
             title,
@@ -119,18 +123,23 @@ impl BBCContent {
             Some(content)
         }
     }
-    fn extract_related_topics(article: &ElementRef) -> Option<Vec<String>> {
+    fn extract_related_topics(
+        article: &ElementRef,
+    ) -> Option<HashSet<RelatedPage<BBCRelatedTopicUrl>>> {
         let related_topics_selector =
             scraper::Selector::parse("div[data-component='topic-list']").unwrap();
         let related_topics = article.select(&related_topics_selector).next()?;
-        let related_topics_selector_name = scraper::Selector::parse("li").unwrap();
-        // Can have empty related topics
-        Some(
-            related_topics
-                .select(&related_topics_selector_name)
-                .map(|element| element.text().collect::<String>())
-                .collect::<Vec<String>>(),
-        )
+
+        let related_topics = Self::extract_related_links(&related_topics)
+            .into_iter()
+            .filter_map(|(url, title)| {
+                let url = BBCRelatedTopicUrl::parse(url).ok()?;
+                let title = title.clone();
+                Some(RelatedPage::new(url, title))
+            })
+            .collect::<HashSet<RelatedPage<BBCRelatedTopicUrl>>>();
+
+        Some(related_topics)
     }
     pub fn extract_related_links(article: &ElementRef) -> Vec<(String, String)> {
         let related_links_selector = scraper::Selector::parse("a").unwrap();
@@ -145,14 +154,14 @@ impl BBCContent {
     }
     pub fn convert_to_page(
         i: impl IntoIterator<Item = (String, String)>,
-    ) -> HashSet<Page<LinkTo, BBCUrl>> {
+    ) -> HashSet<Page<LinkTo, BBCNewsUrl>> {
         i.into_iter()
             .filter_map(|(url, title)| {
-                let url = BBCUrl::try_from(url).ok()?;
+                let url = BBCNewsUrl::try_from(url).ok()?;
                 let title = title.clone();
-                Some(Page::<LinkTo, BBCUrl>::new(url, title))
+                Some(Page::<LinkTo, BBCNewsUrl>::new(url, title))
             })
-            .collect::<HashSet<Page<LinkTo, BBCUrl>>>()
+            .collect::<HashSet<Page<LinkTo, BBCNewsUrl>>>()
     }
     fn extract_timestamp(article: &ElementRef) -> String {
         // <time data-testid="timestamp" datetime="2024-06-10T06:58:21.378Z">10 June 2024, 07:58 BST</time>

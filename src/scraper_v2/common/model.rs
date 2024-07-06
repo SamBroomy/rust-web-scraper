@@ -1,8 +1,9 @@
 use crate::Result;
 
-use crate::common::{ScrapableContent, UrlTrait};
+use crate::common::{RelatedPage, ScrapableContent, UrlTrait};
 
 use async_trait::async_trait;
+use futures::stream::{self, StreamExt};
 use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -52,13 +53,13 @@ impl DatabaseService for MockDB {
 
 #[derive(Debug, Clone)]
 pub struct SurrealDb {
-    db: Surreal<Client>,
+    db: Arc<Mutex<Surreal<Client>>>,
 }
 
 impl SurrealDb {
     pub async fn new(db_name: impl Into<Option<String>>) -> Self {
         Self {
-            db: Self::get_client(db_name).await.unwrap(),
+            db: Arc::new(Mutex::new(Self::get_client(db_name).await.unwrap())),
         }
     }
 
@@ -87,26 +88,63 @@ impl SurrealDb {
 
 #[async_trait]
 impl DatabaseService for SurrealDb {
-    #[instrument(skip_all, name = "SurrealDb::save_content", level = "debug", fields(url = %c.get_url().to_string()), err(level = "debug"))]
-    async fn save_content<C: ScrapableContent + 'static>(&self, c: &C) -> Result<()> {
-        let created: Option<C> = self
-            .db
-            .update(("pages", c.get_url().to_string()))
-            .content(c.clone())
-            .await?;
-        println!("{:?}", created);
+    #[instrument(skip_all, name = "SurrealDb::save_content", level = "debug", fields(url = %content.get_url().to_string()), err(level = "warn"))]
+    async fn save_content<C: ScrapableContent + 'static>(&self, content: &C) -> Result<()> {
+        {
+            let _: Option<C> = self
+                .db
+                .lock()
+                .await
+                .update(("pages", content.get_url().to_string()))
+                .content(content.clone())
+                .await?;
+        }
 
         let sql = format!(
-            "RELATE pages:`{}`->links->{:?};",
-            c.get_url().to_string(),
-            c.get_related_pages()
+            "RELATE pages:`{}`->links_to->{:?};",
+            content.get_url().to_string(),
+            content
+                .get_related_pages()
                 .into_iter()
                 .map(|page| format!("pages:`{}`", page.get_url_arc().to_string()))
                 .collect::<Vec<String>>()
         );
+        {
+            self.db.lock().await.query(sql).await?;
+        }
 
-        println!("{:?}", sql);
-        self.db.query(sql).await?;
+        let topics = content.get_related_topics();
+
+        stream::iter(topics.into_iter())
+            .for_each_concurrent(None, |topic| {
+                let db = self.db.clone();
+
+                async move {
+                    let _: Option<RelatedPage<C::RelatedUrl>> = db
+                        .lock()
+                        .await
+                        .update(("topics", topic.get_title()))
+                        .content(topic.clone())
+                        .await
+                        .unwrap();
+                }
+            })
+            .await;
+
+        let topic_names = content
+            .get_related_topics()
+            .into_iter()
+            .map(|topic| format!("topics:`{}`", topic.get_title().to_string()))
+            .collect::<Vec<String>>();
+
+        let sql = format!(
+            "RELATE pages:`{}`->has_topic->{:?};",
+            content.get_url().to_string(),
+            topic_names
+        );
+
+        self.db.lock().await.query(sql).await?;
+
         Ok(())
     }
 }

@@ -1,6 +1,6 @@
 use crate::Result;
 
-use super::{error::BBCError, BBCContent, BBCUrl};
+use super::{error::BBCError, BBCContent, BBCNewsUrl};
 use crate::common::{make_request, LinkTo, Page, Scrapable, SiteSpecificScraper, UrlTrait};
 
 use async_trait::async_trait;
@@ -11,10 +11,10 @@ pub struct BBCScraper;
 
 #[async_trait]
 impl SiteSpecificScraper for BBCScraper {
-    type Url = BBCUrl;
+    type Url = BBCNewsUrl;
 
     async fn scrape_initial_urls(&self) -> Result<Vec<Box<Page<dyn Scrapable, Self::Url>>>> {
-        let initial_url = BBCUrl::initialise();
+        let initial_url = BBCNewsUrl::initialise();
         let mut urls = Vec::new();
 
         let document = make_request(&initial_url).await?;
@@ -42,7 +42,7 @@ impl SiteSpecificScraper for BBCScraper {
 }
 
 impl BBCScraper {
-    fn scrape_section(document: &Html, selector_str: &str) -> HashSet<Page<LinkTo, BBCUrl>> {
+    fn scrape_section(document: &Html, selector_str: &str) -> HashSet<Page<LinkTo, BBCNewsUrl>> {
         let selector = scraper::Selector::parse(selector_str).unwrap();
         let section = document.select(&selector).next().unwrap();
 
@@ -50,11 +50,11 @@ impl BBCScraper {
         BBCContent::convert_to_page(page_links)
     }
 
-    fn scrape_headline(document: &Html) -> HashSet<Page<LinkTo, BBCUrl>> {
+    fn scrape_headline(document: &Html) -> HashSet<Page<LinkTo, BBCNewsUrl>> {
         Self::scrape_section(document, "div#nations-news-uk")
     }
 
-    fn scrape_most_read(document: &Html) -> HashSet<Page<LinkTo, BBCUrl>> {
+    fn scrape_most_read(document: &Html) -> HashSet<Page<LinkTo, BBCNewsUrl>> {
         Self::scrape_section(document, "div[data-component='mostRead']")
     }
 }
