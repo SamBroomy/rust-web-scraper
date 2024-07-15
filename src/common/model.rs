@@ -88,6 +88,7 @@ impl SurrealDb {
 
 #[async_trait]
 impl DatabaseService for SurrealDb {
+    #[allow(clippy::blocks_in_conditions)]
     #[instrument(skip_all, name = "SurrealDb::save_content", level = "debug", fields(url = %content.get_url().to_string()), err(level = "warn"))]
     async fn save_content<C: ScrapableContent + 'static>(&self, content: &C) -> Result<()> {
         {
@@ -117,7 +118,7 @@ impl DatabaseService for SurrealDb {
 
         stream::iter(topics.into_iter())
             .for_each_concurrent(None, |topic| {
-                let db = self.db.clone();
+                let db = Arc::new(&self.db);
 
                 async move {
                     let _: Option<RelatedPage<C::RelatedUrl>> = db
@@ -134,7 +135,7 @@ impl DatabaseService for SurrealDb {
         let topic_names = content
             .get_related_topics()
             .into_iter()
-            .map(|topic| format!("topics:`{}`", topic.get_title().to_string()))
+            .map(|topic| format!("topics:`{}`", topic.get_title()))
             .collect::<Vec<String>>();
 
         let sql = format!(

@@ -25,7 +25,7 @@ macro_rules! define_url_type {
         }
 
         impl TryFrom<String> for $name {
-            type Error = crate::Error;
+            type Error = $crate::Error;
 
             fn try_from(url: String) -> Result<Self> {
                 Self::parse_url(&url).map($name)

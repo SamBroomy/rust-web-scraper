@@ -99,6 +99,8 @@ impl<S: PageState + ?Sized, U: UrlTrait> Page<S, U> {
         Arc::clone(&self.url)
     }
     /// Transition to a new state while keeping the page in place or in a box.
+    /// Allow the warning as I want the function to consume self.
+    #[allow(clippy::boxed_local)]
     fn transition_in_place<N: PageState>(self: Box<Self>, next: N) -> Box<Page<N, U>> {
         Box::new(Page {
             url: Arc::clone(&self.url),

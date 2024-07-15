@@ -1,11 +1,8 @@
 [package]
-name = "web_scraper"
+name = "recursive_scraper"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-name = "recursive_scraper"
-path = "src/main.rs"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
